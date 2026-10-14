@@ -536,10 +536,65 @@ class Connect4Game {
                 }
             });
 
+            this.launchConfetti();
             this.playSound('win');
         }
 
         this.updateUI();
+    }
+
+    launchConfetti() {
+        const canvas = document.getElementById('confetti-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
+        const particles = [];
+        for (let i = 0; i < 90; i++) {
+            particles.push({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2 - 80,
+                vx: (Math.random() - 0.5) * 18,
+                vy: (Math.random() - 0.75) * 18,
+                size: Math.random() * 8 + 5,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                rotation: Math.random() * 360,
+                vRot: (Math.random() - 0.5) * 10,
+                opacity: 1
+            });
+        }
+
+        const startTime = performance.now();
+        const render = (now) => {
+            const elapsed = now - startTime;
+            if (elapsed > 2500) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.38; // gravity
+                p.rotation += p.vRot;
+                p.opacity = Math.max(0, 1 - (elapsed / 2500));
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.opacity;
+                ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                ctx.restore();
+            });
+
+            requestAnimationFrame(render);
+        };
+
+        requestAnimationFrame(render);
     }
 
     updateUI() {
