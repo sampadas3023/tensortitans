@@ -459,7 +459,7 @@ class Connect4Game {
             // Run AI move after a slight delay to allow smooth animation
             const delay = this.currentMode === 'bvb' ? this.botSpeedMs : 250;
 
-            setTimeout(() => {
+            setTimeout(async () => {
                 if (this.isGameOver) {
                     this.isAiThinking = false;
                     return;
@@ -473,8 +473,38 @@ class Connect4Game {
                 } else if (pType === 'greedy') {
                     chosenCol = greedyBot(this.board, this.currentPlayer);
                 } else {
-                    // Minimax with Alpha-Beta
-                    chosenCol = choose_move(this.board, this.currentPlayer, { depth: depth });
+                    let usedBackend = false;
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 800);
+                        const res = await fetch('/api/choose_move', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                board: this.board,
+                                player: this.currentPlayer,
+                                depth: depth
+                            }),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && typeof data.move === 'number') {
+                                chosenCol = data.move;
+                                usedBackend = true;
+                                if (this.statTimeElem) {
+                                    this.statTimeElem.innerText = `${data.duration_ms} ms (Py Bitboard)`;
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        // Offline or standalone mode: fallback cleanly to JS engine
+                    }
+
+                    if (!usedBackend) {
+                        chosenCol = choose_move(this.board, this.currentPlayer, { depth: depth });
+                    }
                 }
 
                 this.isAiThinking = false;

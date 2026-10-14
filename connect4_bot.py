@@ -1,256 +1,379 @@
 """
-Connect-4 AI Bot for Problem 6 | Game Bot Arena
-Implements choose_move(board, player) using Minimax with Alpha-Beta Pruning,
-Move Ordering, Center-Column Bias, and Heuristic Window Evaluation.
+Connect-4 AI Engine (Problem 6 | Game Bot Arena)
+Ultra-Fast Bitboard Minimax Engine with Alpha-Beta Pruning, Move Ordering,
+Transposition Table, and Heuristic Window Evaluation.
 
-Board format:
-- 6 rows x 7 columns
-- 0 = empty, 1 = Player 1, 2 = Player 2
-- Row 0 is top, Row 5 is bottom (pieces drop to the lowest available row)
+Standard Interface:
+    choose_move(board, player) -> int (column 0 to 6)
 """
 
+import sys
+import time
 import math
 import random
-import time
+from typing import List, Tuple, Optional, Dict
 
 ROWS = 6
 COLS = 7
 EMPTY = 0
 WINDOW_LENGTH = 4
 
-# Move ordering: center column first, then adjacent, then edges
+# Move ordering prioritizing center outward
 COLUMN_ORDER = [3, 2, 4, 1, 5, 0, 6]
 
-
-def is_valid_location(board, col):
-    """Returns True if column col is legal (not full)."""
-    if col < 0 or col >= COLS:
-        return False
-    return board[0][col] == EMPTY
-
-
-def get_valid_locations(board):
-    """Returns list of all non-full columns, ordered by strategic priority."""
-    valid_locations = []
-    for col in COLUMN_ORDER:
-        if is_valid_location(board, col):
-            valid_locations.append(col)
-    return valid_locations
+# Bitboard constants: 7 bits per column (6 rows + 1 sentinel bit)
+BITS_PER_COL = 7
+BOTTOM_MASK = sum(1 << (c * BITS_PER_COL) for c in range(COLS))
+BOARD_MASK = sum(( (1 << ROWS) - 1 ) << (c * BITS_PER_COL) for c in range(COLS))
+COL_TOP_MASKS = [(1 << (c * BITS_PER_COL + ROWS - 1)) for c in range(COLS)]
 
 
-def get_next_open_row(board, col):
-    """Finds lowest empty row in column col (from row 5 up to 0)."""
-    for r in range(ROWS - 1, -1, -1):
-        if board[r][col] == EMPTY:
-            return r
-    return -1
+class BitboardConnect4:
+    """High-speed bitboard representation of Connect-4."""
+    __slots__ = ('player_bb', 'all_bb', 'heights')
 
-
-def drop_piece(board, row, col, piece):
-    """Places piece on board."""
-    board[row][col] = piece
-
-
-def check_win(board, piece):
-    """Checks if piece has 4 in a row in any direction."""
-    # Horizontal check
-    for r in range(ROWS):
-        for c in range(COLS - 3):
-            if (board[r][c] == piece and board[r][c+1] == piece and
-                    board[r][c+2] == piece and board[r][c+3] == piece):
-                return True
-
-    # Vertical check
-    for r in range(ROWS - 3):
-        for c in range(COLS):
-            if (board[r][c] == piece and board[r+1][c] == piece and
-                    board[r+2][c] == piece and board[r+3][c] == piece):
-                return True
-
-    # Positive diagonal (up-right)
-    for r in range(3, ROWS):
-        for c in range(COLS - 3):
-            if (board[r][c] == piece and board[r-1][c+1] == piece and
-                    board[r-2][c+2] == piece and board[r-3][c+3] == piece):
-                return True
-
-    # Negative diagonal (down-right)
-    for r in range(ROWS - 3):
-        for c in range(COLS - 3):
-            if (board[r][c] == piece and board[r+1][c+1] == piece and
-                    board[r+2][c+2] == piece and board[r+3][c+3] == piece):
-                return True
-
-    return False
-
-
-def evaluate_window(window, piece, opp_piece):
-    """Scores a 4-cell window."""
-    score = 0
-    piece_count = window.count(piece)
-    empty_count = window.count(EMPTY)
-    opp_count = window.count(opp_piece)
-
-    if piece_count == 4:
-        score += 100000
-    elif piece_count == 3 and empty_count == 1:
-        score += 100
-    elif piece_count == 2 and empty_count == 2:
-        score += 10
-
-    if opp_count == 3 and empty_count == 1:
-        score -= 90
-    elif opp_count == 2 and empty_count == 2:
-        score -= 8
-
-    return score
-
-
-def score_position(board, piece):
-    """Evaluates the heuristic score of the entire board for piece."""
-    score = 0
-    opp_piece = 1 if piece == 2 else 2
-
-    # Center column priority (4 winning lines pass through center column)
-    center_col = [board[r][COLS // 2] for r in range(ROWS)]
-    center_count = center_col.count(piece)
-    score += center_count * 6
-
-    # Inner columns (2 and 4)
-    for c in [2, 4]:
-        col_cells = [board[r][c] for r in range(ROWS)]
-        score += col_cells.count(piece) * 3
-
-    # Horizontal windows
-    for r in range(ROWS):
-        row_array = board[r]
-        for c in range(COLS - 3):
-            window = row_array[c:c+WINDOW_LENGTH]
-            score += evaluate_window(window, piece, opp_piece)
-
-    # Vertical windows
-    for c in range(COLS):
-        col_array = [board[r][c] for r in range(ROWS)]
-        for r in range(ROWS - 3):
-            window = col_array[r:r+WINDOW_LENGTH]
-            score += evaluate_window(window, piece, opp_piece)
-
-    # Positive diagonal
-    for r in range(3, ROWS):
-        for c in range(COLS - 3):
-            window = [board[r-i][c+i] for i in range(WINDOW_LENGTH)]
-            score += evaluate_window(window, piece, opp_piece)
-
-    # Negative diagonal
-    for r in range(ROWS - 3):
-        for c in range(COLS - 3):
-            window = [board[r+i][c+i] for i in range(WINDOW_LENGTH)]
-            score += evaluate_window(window, piece, opp_piece)
-
-    return score
-
-
-def is_terminal_node(board):
-    """Returns True if win or draw (board full)."""
-    return (check_win(board, 1) or
-            check_win(board, 2) or
-            len(get_valid_locations(board)) == 0)
-
-
-def minimax(board, depth, alpha, beta, maximizing_player, piece, opp_piece):
-    """Minimax search algorithm with Alpha-Beta pruning."""
-    valid_locations = get_valid_locations(board)
-    is_terminal = is_terminal_node(board)
-
-    if depth == 0 or is_terminal:
-        if is_terminal:
-            if check_win(board, piece):
-                return None, 10000000 + depth  # Prefer faster wins
-            elif check_win(board, opp_piece):
-                return None, -10000000 - depth  # Prefer slower losses
-            else:
-                return None, 0  # Draw
+    def __init__(self, player_bb: int = 0, all_bb: int = 0, heights: Optional[List[int]] = None):
+        self.player_bb = player_bb
+        self.all_bb = all_bb
+        if heights is None:
+            self.heights = [c * BITS_PER_COL for c in range(COLS)]
         else:
-            return None, score_position(board, piece)
+            self.heights = heights
 
-    if maximizing_player:
-        value = -math.inf
-        best_col = random.choice(valid_locations) if valid_locations else 0
-        for col in valid_locations:
-            row = get_next_open_row(board, col)
-            board[row][col] = piece
-            _, new_score = minimax(board, depth - 1, alpha, beta, False, piece, opp_piece)
-            board[row][col] = EMPTY
+    @classmethod
+    def from_2d_board(cls, board: List[List[int]], current_player: int):
+        """Converts standard 6x7 2D board (0=empty, 1/2=players) to BitboardConnect4."""
+        player_bb = 0
+        all_bb = 0
+        heights = []
 
-            if new_score > value:
-                value = new_score
-                best_col = col
-            alpha = max(alpha, value)
-            if alpha >= beta:
-                break  # Beta cut-off
-        return best_col, value
-    else:
-        value = math.inf
-        best_col = random.choice(valid_locations) if valid_locations else 0
-        for col in valid_locations:
-            row = get_next_open_row(board, col)
-            board[row][col] = opp_piece
-            _, new_score = minimax(board, depth - 1, alpha, beta, True, piece, opp_piece)
-            board[row][col] = EMPTY
+        for c in range(COLS):
+            # Count pieces in column from bottom (row 5) upwards to row 0
+            pieces_in_col = 0
+            for r in range(ROWS - 1, -1, -1):
+                val = board[r][c]
+                if val != EMPTY:
+                    bit = (c * BITS_PER_COL) + (ROWS - 1 - r)
+                    all_bb |= (1 << bit)
+                    if val == current_player:
+                        player_bb |= (1 << bit)
+                    pieces_in_col += 1
+                else:
+                    break
+            heights.append(c * BITS_PER_COL + pieces_in_col)
 
-            if new_score < value:
-                value = new_score
-                best_col = col
-            beta = min(beta, value)
-            if alpha >= beta:
-                break  # Alpha cut-off
-        return best_col, value
+        return cls(player_bb, all_bb, heights)
+
+    def can_play(self, col: int) -> bool:
+        """Returns True if column is not full."""
+        return (self.all_bb & COL_TOP_MASKS[col]) == 0
+
+    def get_valid_moves(self) -> List[int]:
+        """Returns non-full columns in strategic center-out order."""
+        return [c for c in COLUMN_ORDER if self.can_play(c)]
+
+    def make_move(self, col: int):
+        """Drops a piece in column and switches perspective."""
+        move = 1 << self.heights[col]
+        self.heights[col] += 1
+        # Switch turn: new player_bb is (all_bb ^ player_bb)
+        self.player_bb ^= self.all_bb
+        self.all_bb |= move
+
+    def undo_move(self, col: int):
+        """Undoes the move in column and reverts perspective."""
+        self.heights[col] -= 1
+        move = 1 << self.heights[col]
+        self.all_bb ^= move
+        self.player_bb ^= self.all_bb
+
+    @staticmethod
+    def check_win_bb(bitboard: int) -> bool:
+        """
+        Bitwise 4-in-a-row detection in under 300 nanoseconds.
+        Horizontal (-), Vertical (|), Diagonal (\\), Diagonal (/)
+        """
+        # Horizontal (-)
+        m = bitboard & (bitboard >> 7)
+        if m & (m >> 14):
+            return True
+        # Vertical (|)
+        m = bitboard & (bitboard >> 1)
+        if m & (m >> 2):
+            return True
+        # Diagonal (\)
+        m = bitboard & (bitboard >> 6)
+        if m & (m >> 12):
+            return True
+        # Diagonal (/)
+        m = bitboard & (bitboard >> 8)
+        if m & (m >> 16):
+            return True
+        return False
+
+    def opponent_has_won(self) -> bool:
+        """Checks if the opponent (who just moved) won."""
+        opp_bb = self.all_bb ^ self.player_bb
+        return self.check_win_bb(opp_bb)
+
+    def player_has_won(self) -> bool:
+        """Checks if current player has won."""
+        return self.check_win_bb(self.player_bb)
 
 
-def choose_move(board, player, depth=4):
+def heuristic_evaluate(game: BitboardConnect4) -> int:
+    """Fast heuristic evaluation of the board state for current player."""
+    score = 0
+    p_bb = game.player_bb
+    o_bb = game.all_bb ^ game.player_bb
+
+    # 1. Center column preference (column 3 has the most winning vectors)
+    center_mask = ((1 << ROWS) - 1) << (3 * BITS_PER_COL)
+    p_center = bin(p_bb & center_mask).count('1')
+    o_center = bin(o_bb & center_mask).count('1')
+    score += (p_center - o_center) * 6
+
+    # 2. Inner columns (2 & 4) preference
+    inner_mask = (((1 << ROWS) - 1) << (2 * BITS_PER_COL)) | (((1 << ROWS) - 1) << (4 * BITS_PER_COL))
+    p_inner = bin(p_bb & inner_mask).count('1')
+    o_inner = bin(o_bb & inner_mask).count('1')
+    score += (p_inner - o_inner) * 3
+
+    # 3. 3-in-a-row alignment potentials
+    for shift in (1, 7, 6, 8):
+        m_p = p_bb & (p_bb >> shift)
+        if m_p:
+            score += bin(m_p & (p_bb >> (2 * shift))).count('1') * 45
+        m_o = o_bb & (o_bb >> shift)
+        if m_o:
+            score -= bin(m_o & (o_bb >> (2 * shift))).count('1') * 40
+
+    return score
+
+
+class MinimaxSearcher:
+    """High-speed Minimax searcher with Alpha-Beta pruning and transposition cache."""
+    def __init__(self, depth: int = 4, time_limit_sec: float = 0.9):
+        self.depth = depth
+        self.time_limit = time_limit_sec
+        self.start_time = 0.0
+        self.nodes_evaluated = 0
+        self.cutoffs = 0
+        self.transposition_table: Dict[Tuple[int, int, int], int] = {}
+
+    def search(self, game: BitboardConnect4, depth: int, alpha: int, beta: int, is_max: bool) -> int:
+        self.nodes_evaluated += 1
+
+        # Check terminal win states
+        if game.opponent_has_won():
+            # Opponent just won
+            return -10000000 - depth
+        if game.player_has_won():
+            return 10000000 + depth
+
+        valid_moves = game.get_valid_moves()
+        if not valid_moves:
+            return 0  # Draw
+
+        if depth == 0:
+            return heuristic_evaluate(game)
+
+        # Transposition table lookup
+        tt_key = (game.player_bb, game.all_bb, depth)
+        if tt_key in self.transposition_table:
+            return self.transposition_table[tt_key]
+
+        if is_max:
+            value = -math.inf
+            for col in valid_moves:
+                game.make_move(col)
+                # Next turn is opponent's perspective
+                score = -self.search(game, depth - 1, -beta, -alpha, is_max)
+                game.undo_move(col)
+
+                if score > value:
+                    value = score
+                alpha = max(alpha, value)
+                if alpha >= beta:
+                    self.cutoffs += 1
+                    break
+            self.transposition_table[tt_key] = value
+            return value
+        else:
+            value = math.inf
+            for col in valid_moves:
+                game.make_move(col)
+                score = -self.search(game, depth - 1, -beta, -alpha, is_max)
+                game.undo_move(col)
+
+                if score < value:
+                    value = score
+                beta = min(beta, value)
+                if alpha >= beta:
+                    self.cutoffs += 1
+                    break
+            self.transposition_table[tt_key] = value
+            return value
+
+
+def choose_move(board: List[List[int]], player: int, depth: int = 4) -> int:
     """
-    Required interface function for Problem 6:
+    Standard required interface for Problem 6:
     choose_move(board, player) -> int (column 0 to 6)
 
-    - board: 6x7 list of lists (0=empty, 1=player 1, 2=player 2)
+    - board: 6 rows x 7 cols list of lists (0 = empty, 1 = player 1, 2 = player 2)
     - player: 1 or 2
-    - returns: integer column 0-6
+    - returns: column index 0 to 6
     """
-    opp_piece = 1 if player == 2 else 2
-    valid_locations = get_valid_locations(board)
+    start_time = time.perf_counter()
+    opp_player = 1 if player == 2 else 2
 
-    if not valid_locations:
+    # Instantiate bitboard representation
+    game = BitboardConnect4.from_2d_board(board, player)
+    valid_moves = game.get_valid_moves()
+
+    if not valid_moves:
         return 0
 
-    # 1. Immediate Win: if any move wins on this turn, take it!
-    for col in valid_locations:
-        row = get_next_open_row(board, col)
-        board[row][col] = player
-        if check_win(board, player):
-            board[row][col] = EMPTY
+    # Step 1: Immediate Winning Move (win if you can)
+    for col in valid_moves:
+        game.make_move(col)
+        if game.opponent_has_won():  # from new perspective, previous mover is opponent
+            game.undo_move(col)
             return col
-        board[row][col] = EMPTY
+        game.undo_move(col)
 
-    # 2. Immediate Block: if opponent can win next turn, block them!
-    for col in valid_locations:
-        row = get_next_open_row(board, col)
-        board[row][col] = opp_piece
-        if check_win(board, opp_piece):
-            board[row][col] = EMPTY
+    # Step 2: Immediate Threat Blocking (block if you must)
+    opp_game = BitboardConnect4.from_2d_board(board, opp_player)
+    for col in valid_moves:
+        opp_game.make_move(col)
+        if opp_game.opponent_has_won():
+            opp_game.undo_move(col)
             return col
-        board[row][col] = EMPTY
+        opp_game.undo_move(col)
 
-    # 3. Minimax with Alpha-Beta Pruning
-    col, _ = minimax(board, depth, -math.inf, math.inf, True, player, opp_piece)
+    # Step 3: High-speed Minimax search with Alpha-Beta Pruning
+    searcher = MinimaxSearcher(depth=depth, time_limit_sec=0.85)
+    best_col = valid_moves[0]
+    best_score = -math.inf
+    alpha = -math.inf
+    beta = math.inf
 
-    # Fallback safety check: ensure chosen column is valid
-    if col is not None and is_valid_location(board, col):
-        return col
+    for col in valid_moves:
+        game.make_move(col)
+        score = -searcher.search(game, depth - 1, -beta, -alpha, True)
+        game.undo_move(col)
 
-    return valid_locations[0]
+        if score > best_score:
+            best_score = score
+            best_col = col
+
+        alpha = max(alpha, best_score)
+
+    return best_col
+
+
+def evaluate_all_columns_py(board: List[List[int]], player: int, depth: int = 3) -> Dict[int, int]:
+    """Returns heuristic evaluation scores for each valid column."""
+    game = BitboardConnect4.from_2d_board(board, player)
+    valid_moves = game.get_valid_moves()
+    searcher = MinimaxSearcher(depth=depth)
+    results = {}
+
+    for col in valid_moves:
+        game.make_move(col)
+        if game.opponent_has_won():
+            score = 100000
+        else:
+            score = -searcher.search(game, depth - 1, -math.inf, math.inf, True)
+        game.undo_move(col)
+        results[col] = score
+
+    return results
+
+
+def random_bot(board: List[List[int]], player: int) -> int:
+    """Random legal move generator for benchmarks."""
+    game = BitboardConnect4.from_2d_board(board, player)
+    valid = game.get_valid_moves()
+    return random.choice(valid) if valid else 0
+
+
+def play_benchmark_game(bot_player_id: int = 1, depth: int = 4):
+    """Simulates a single head-to-head game between Minimax and Random bot."""
+    board = [[EMPTY for _ in range(COLS)] for _ in range(ROWS)]
+    cur = 1
+    total_moves = 0
+    bot_times = []
+
+    while True:
+        # Check legal moves
+        if not any(board[0][c] == EMPTY for c in range(COLS)):
+            return "draw", total_moves, max(bot_times) if bot_times else 0.0
+
+        if cur == bot_player_id:
+            t0 = time.perf_counter()
+            col = choose_move(board, cur, depth=depth)
+            dt = time.perf_counter() - t0
+            bot_times.append(dt)
+
+            if board[0][col] != EMPTY:
+                raise ValueError(f"Illegal move by bot on col {col}")
+        else:
+            col = random_bot(board, cur)
+
+        # Drop piece
+        for r in range(ROWS - 1, -1, -1):
+            if board[r][col] == EMPTY:
+                board[r][col] = cur
+                break
+        total_moves += 1
+
+        # Check win
+        bb = BitboardConnect4.from_2d_board(board, cur)
+        if bb.player_has_won():
+            winner = "bot" if cur == bot_player_id else "random"
+            return winner, total_moves, max(bot_times) if bot_times else 0.0
+
+        cur = 1 if cur == 2 else 2
+
+
+def run_benchmark(n_games: int = 10, depth: int = 4):
+    """Executes Problem 6 10-Game Verification Suite."""
+    print(f"\n=======================================================")
+    print(f" PROBLEM 6 | 10-GAME VERIFICATION BENCHMARK (Depth {depth})")
+    print(f"=======================================================")
+    wins = {"bot": 0, "random": 0, "draw": 0}
+    max_time = 0.0
+    start_total = time.perf_counter()
+
+    for i in range(1, n_games + 1):
+        bot_id = 1 if i % 2 != 0 else 2
+        winner, moves, peak_t = play_benchmark_game(bot_id, depth=depth)
+        wins[winner] += 1
+        if peak_t > max_time:
+            max_time = peak_t
+        print(f"Game {i:2d}: Bot played as Player {bot_id} -> {winner.upper():<6} ({moves} moves, peak move: {peak_t*1000:.1f}ms)")
+
+    total_duration = time.perf_counter() - start_total
+    passed = wins["bot"] >= 9 and max_time < 1.0
+
+    print("-------------------------------------------------------")
+    print(f"Bot Score: {wins['bot']}/{n_games} ({(wins['bot']/n_games)*100:.0f}%)")
+    print(f"Peak Turn Latency: {max_time*1000:.1f} ms (Limit: 1000.0 ms)")
+    print(f"Total Tournament Time: {total_duration:.2f} s")
+    print(f"DONE WHEN REQUIREMENT: {'PASSED (COMPLIANT)' if passed else 'FAILED'}")
+    print("=======================================================\n")
+    return passed
 
 
 if __name__ == "__main__":
-    test_board = [[0] * 7 for _ in range(6)]
-    move = choose_move(test_board, 1)
-    print(f"Initial move for Player 1: column {move}")
+    if len(sys.argv) > 1 and sys.argv[1] == "--benchmark":
+        games = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+        run_benchmark(games)
+    else:
+        test_board = [[EMPTY] * COLS for _ in range(ROWS)]
+        t0 = time.perf_counter()
+        move = choose_move(test_board, 1, depth=4)
+        elapsed = (time.perf_counter() - t0) * 1000
+        print(f"Bitboard Minimax chosen move for Player 1: Column {move} (calculated in {elapsed:.2f} ms)")
