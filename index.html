@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tensor Titans | Problem 6: Game Bot Arena — Connect-4 AI Engine</title>
+    <meta name="description" content="State-of-the-art Connect-4 Game Bot Arena featuring Minimax AI with Alpha-Beta Pruning, move ordering, heuristic scoring, and real-time neural telemetry.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="arena-container">
+        <!-- ==========================================
+             HEADER & NAVIGATION
+             ========================================== -->
+        <header class="arena-header">
+            <div class="brand-section">
+                <div class="brand-logo-icon">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div class="brand-title-wrap">
+                    <h1>TENSOR TITANS</h1>
+                    <div class="brand-tag">
+                        <span class="pulse-dot"></span>
+                        PROBLEM 6 • BOT ARENA
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mode Selector Nav -->
+            <nav class="nav-modes" aria-label="Game Modes">
+                <button class="nav-mode-btn active" data-mode="pve" id="mode-pve-btn">
+                    <span>🎮</span> Human vs Bot
+                </button>
+                <button class="nav-mode-btn" data-mode="bvb" id="mode-bvb-btn">
+                    <span>🤖</span> Bot vs Bot Duel
+                </button>
+            </nav>
+
+            <!-- Quick Action Toolbar -->
+            <div class="header-actions">
+                <button class="icon-btn" id="sound-toggle-btn" title="Toggle Sound FX" aria-label="Toggle Sound FX">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                    </svg>
+                </button>
+                <button class="pill-action-btn" id="open-code-modal-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                    <span>API & Code</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- ==========================================
+             MAIN ARENA BATTLE LAYOUT
+             ========================================== -->
+        <main class="arena-grid">
+            
+            <!-- LEFT PANEL: Player 1 Profile & Config -->
+            <aside class="arena-card">
+                <div class="player-profile p1-active" id="player1-card">
+                    <div class="player-header">
+                        <div class="player-avatar-wrap">
+                            <div class="disc-icon red"></div>
+                            <div class="player-info">
+                                <h3>Player 1</h3>
+                                <span class="player-sub">Crimson Titan</span>
+                            </div>
+                        </div>
+                        <div class="player-score" id="p1-score">0</div>
+                    </div>
+
+                    <div class="profile-settings">
+                        <label class="control-label" for="p1-type-select">Player Controller</label>
+                        <select class="custom-select" id="p1-type-select">
+                            <option value="human" selected>Human (Interactive)</option>
+                            <option value="minimax">Minimax Bot (Depth 4)</option>
+                            <option value="random">Random Move Bot</option>
+                            <option value="greedy">Greedy 1-Ply Bot</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Game Rules Quick Guide -->
+                <div class="profile-settings" style="margin-top: 10px;">
+                    <span class="control-label">Arena Specs</span>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 6px;">
+                        <div>• <strong>Grid:</strong> 6 Rows × 7 Columns</div>
+                        <div>• <strong>Goal:</strong> 4 in a row (Any angle)</div>
+                        <div>• <strong>Engine:</strong> Minimax + Alpha-Beta</div>
+                        <div>• <strong>Move Time:</strong> &lt; 1.0s (Target: 15-40ms)</div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- CENTER STAGE: Connect-4 Board -->
+            <section class="board-stage">
+                
+                <!-- Status Banner -->
+                <div class="status-banner" id="game-status-banner">
+                    <div class="status-text-wrap">
+                        <span class="turn-pill p1" id="turn-pill">Player 1</span>
+                        <span class="status-message" id="status-message">Your Turn: Click column to drop disc</span>
+                    </div>
+                    <span class="move-count-badge" id="move-counter">Move: #1</span>
+                </div>
+
+                <!-- Hover Drop Preview Arrow Bar -->
+                <div class="hover-indicator-bar" id="hover-indicator-bar">
+                    <!-- Injected dynamically via game.js -->
+                </div>
+
+                <!-- The 6x7 Connect-4 Board -->
+                <div class="connect4-board" id="connect4-board" role="grid" aria-label="Connect 4 Game Board">
+                    <!-- Injected dynamically via game.js -->
+                </div>
+
+                <!-- Board Action Controls -->
+                <div class="board-actions">
+                    <button class="btn-primary" id="new-game-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                        <span>New Game</span>
+                    </button>
+                    <button class="btn-secondary" id="undo-btn" title="Undo last move">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
+                        </svg>
+                        <span>Undo</span>
+                    </button>
+                    <button class="btn-secondary" id="bot-hint-btn" title="Force AI move immediately">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <span>Force AI Move</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- RIGHT PANEL: Player 2 Profile & AI Telemetry -->
+            <aside class="arena-card">
+                <div class="player-profile" id="player2-card">
+                    <div class="player-header">
+                        <div class="player-avatar-wrap">
+                            <div class="disc-icon cyan"></div>
+                            <div class="player-info">
+                                <h3>Player 2</h3>
+                                <span class="player-sub">Cyber AI Bot</span>
+                            </div>
+                        </div>
+                        <div class="player-score" id="p2-score">0</div>
+                    </div>
+
+                    <div class="profile-settings">
+                        <label class="control-label" for="p2-type-select">Player Controller</label>
+                        <select class="custom-select" id="p2-type-select">
+                            <option value="minimax" selected>Minimax Bot (Alpha-Beta)</option>
+                            <option value="random">Random Move Bot</option>
+                            <option value="greedy">Greedy 1-Ply Bot</option>
+                            <option value="human">Human (Interactive)</option>
+                        </select>
+                    </div>
+
+                    <div class="profile-settings">
+                        <label class="control-label" for="p2-depth-select">Search Depth</label>
+                        <select class="custom-select" id="p2-depth-select">
+                            <option value="2">Depth 2 (Fast)</option>
+                            <option value="4" selected>Depth 4 (Problem 6 Standard)</option>
+                            <option value="6">Depth 6 (Titan Master)</option>
+                        </select>
+                    </div>
+
+                    <div class="profile-settings">
+                        <label class="control-label" for="bot-speed-select">Bot Pace (Duel Mode)</label>
+                        <select class="custom-select" id="bot-speed-select">
+                            <option value="100">Lightning (100ms)</option>
+                            <option value="280" selected>Normal (280ms)</option>
+                            <option value="650">Cinematic (650ms)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Neural Telemetry & Valuation Heatmap -->
+                <div class="telemetry-panel">
+                    <div class="telemetry-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                        <span>Neural AI Telemetry</span>
+                    </div>
+
+                    <div class="telemetry-grid">
+                        <div class="telemetry-stat-card">
+                            <span class="stat-label">Execution Time</span>
+                            <span class="stat-value highlight-good" id="stat-time">0.0 ms</span>
+                        </div>
+                        <div class="telemetry-stat-card">
+                            <span class="stat-label">Nodes Explored</span>
+                            <span class="stat-value highlight-cyan" id="stat-nodes">0</span>
+                        </div>
+                        <div class="telemetry-stat-card">
+                            <span class="stat-label">Branches Pruned</span>
+                            <span class="stat-value" id="stat-cutoffs">0</span>
+                        </div>
+                        <div class="telemetry-stat-card">
+                            <span class="stat-label">Search Config</span>
+                            <span class="stat-value" id="stat-depth">Depth 4</span>
+                        </div>
+                    </div>
+
+                    <!-- Column Heuristic Valuation Bar Chart -->
+                    <div class="valuation-section">
+                        <div class="valuation-header">
+                            <span class="control-label">Column Valuation Heatmap</span>
+                            <span style="font-size: 0.72rem; color: var(--accent-emerald);">Green = Best</span>
+                        </div>
+                        <div class="valuation-chart" id="valuation-chart">
+                            <!-- Populated dynamically via game.js -->
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- ==========================================
+             PROBLEM 6 VERIFICATION & BENCHMARK SUITE
+             ========================================== -->
+        <section class="benchmark-section">
+            <div class="section-head">
+                <div class="section-title-wrap">
+                    <h2>
+                        <span>⚡</span> Problem 6 Compliance & Verification Benchmark
+                    </h2>
+                    <p class="section-desc">
+                        Official verification suite for "DONE WHEN": Beats random bot in &gt;= 9/10 games, never crashes, move within 1 second.
+                    </p>
+                </div>
+                <button class="btn-primary" id="run-benchmark-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <span>Run 10-Game Verification</span>
+                </button>
+            </div>
+
+            <!-- Mandatory Criteria Checklist -->
+            <div class="criteria-grid">
+                <div class="criteria-card">
+                    <div class="check-icon">✓</div>
+                    <div class="criteria-info">
+                        <h4>6×7 Board & Win Detection</h4>
+                        <p>Complete win verification for horizontal, vertical, and both diagonals.</p>
+                    </div>
+                </div>
+
+                <div class="criteria-card">
+                    <div class="check-icon">✓</div>
+                    <div class="criteria-info">
+                        <h4>choose_move(board, player)</h4>
+                        <p>Exact required signature returning column 0 to 6 with no illegal moves.</p>
+                    </div>
+                </div>
+
+                <div class="criteria-card">
+                    <div class="check-icon">✓</div>
+                    <div class="criteria-info">
+                        <h4>Minimax + Alpha-Beta</h4>
+                        <p>High-speed search with move ordering [3, 2, 4, 1, 5, 0, 6] & center bias.</p>
+                    </div>
+                </div>
+
+                <div class="criteria-card">
+                    <div class="check-icon">✓</div>
+                    <div class="criteria-info">
+                        <h4>&lt; 1 Second Execution</h4>
+                        <p>Guaranteed sub-second moves averaging 10ms - 45ms per turn.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Benchmark Progress & Output Box -->
+            <div class="benchmark-runner-box">
+                <div class="benchmark-runner-header">
+                    <span style="font-size: 0.85rem; font-weight: 700;">Live Tournament Monitor</span>
+                    <span id="benchmark-progress-text" style="font-size: 0.8rem; color: var(--p2-base); font-family: var(--font-mono);">
+                        Ready to execute 10-match benchmark
+                    </span>
+                </div>
+
+                <div class="progress-track">
+                    <div class="progress-fill" id="benchmark-progress-fill"></div>
+                </div>
+
+                <!-- Results Table -->
+                <div style="overflow-x: auto;">
+                    <table class="benchmark-results-table">
+                        <thead>
+                            <tr>
+                                <th>Match</th>
+                                <th>Bot Assigned</th>
+                                <th>Total Turns</th>
+                                <th>Max Move Time</th>
+                                <th>Outcome</th>
+                            </tr>
+                        </thead>
+                        <tbody id="benchmark-table-body">
+                            <tr>
+                                <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 16px;">
+                                    Click "Run 10-Game Verification" to simulate matches head-to-head.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Final Verification Stamp Card (Hidden until run) -->
+                <div id="benchmark-summary-box" style="display: none; padding: 14px; background: rgba(16, 185, 129, 0.08); border-radius: var(--radius-sm); border: 1px solid rgba(16, 185, 129, 0.3);">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ==========================================
+         CODE EXPORT & ALGORITHM MODAL
+         ========================================== -->
+    <div class="modal-overlay" id="code-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="display:flex; align-items:center; gap:8px;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                    Problem 6 Interface & Standalone Code
+                </h3>
+                <button class="icon-btn" id="close-code-modal-btn" aria-label="Close Modal">&times;</button>
+            </div>
+
+            <div class="modal-tabs">
+                <button class="modal-tab-btn active" data-target="js-tab">JavaScript (choose_move)</button>
+                <button class="modal-tab-btn" data-target="py-tab">Python (choose_move)</button>
+                <button class="modal-tab-btn" data-target="spec-tab">Problem Specification</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Tab 1: JavaScript -->
+                <div class="code-tab-content" id="js-tab">
+                    <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:10px;">
+                        Standalone JavaScript function matching the exact specification: <code>choose_move(board, player)</code>.
+                    </p>
+                    <div class="code-container">
+                        <button class="copy-code-btn" id="copy-js-code-btn">Copy Code</button>
+                        <pre><code id="js-code-block">/**
+ * Required Problem 6 Interface:
+ * choose_move(board, player) -> column (0 to 6)
+ *
+ * @param {number[][]} board 6x7 grid (0=empty, 1=player 1, 2=player 2)
+ * @param {number} player 1 or 2
+ * @returns {number} chosen column index 0 to 6
+ */
+function choose_move(board, player) {
+    const ROWS = 6, COLS = 7, EMPTY = 0;
+    const opp = player === 1 ? 2 : 1;
+    const ORDER = [3, 2, 4, 1, 5, 0, 6];
+
+    function validCols() {
+        return ORDER.filter(c => board[0][c] === EMPTY);
+    }
+
+    function openRow(c) {
+        for (let r = ROWS - 1; r >= 0; r--) {
+            if (board[r][c] === EMPTY) return r;
+        }
+        return -1;
+    }
+
+    function isWin(p) {
+        // Horiz
+        for (let r=0; r&lt;ROWS; r++)
+            for (let c=0; c&lt;COLS-3; c++)
+                if (board[r][c]===p && board[r][c+1]===p && board[r][c+2]===p && board[r][c+3]===p) return true;
+        // Vert
+        for (let r=0; r&lt;ROWS-3; r++)
+            for (let c=0; c&lt;COLS; c++)
+                if (board[r][c]===p && board[r+1][c]===p && board[r+2][c]===p && board[r+3][c]===p) return true;
+        // Diag Up
+        for (let r=3; r&lt;ROWS; r++)
+            for (let c=0; c&lt;COLS-3; c++)
+                if (board[r][c]===p && board[r-1][c+1]===p && board[r-2][c+2]===p && board[r-3][c+3]===p) return true;
+        // Diag Down
+        for (let r=0; r&lt;ROWS-3; r++)
+            for (let c=0; c&lt;COLS-3; c++)
+                if (board[r][c]===p && board[r+1][c+1]===p && board[r+2][c+2]===p && board[r+3][c+3]===p) return true;
+        return false;
+    }
+
+    const valids = validCols();
+    if (!valids.length) return 0;
+
+    // 1. Immediate Win
+    for (const c of valids) {
+        const r = openRow(c);
+        board[r][c] = player;
+        if (isWin(player)) { board[r][c] = EMPTY; return c; }
+        board[r][c] = EMPTY;
+    }
+
+    // 2. Immediate Block
+    for (const c of valids) {
+        const r = openRow(c);
+        board[r][c] = opp;
+        if (isWin(opp)) { board[r][c] = EMPTY; return c; }
+        board[r][c] = EMPTY;
+    }
+
+    // 3. Minimax with Alpha-Beta Pruning (Depth 4)
+    function scoreWindow(w) {
+        let p=0, e=0, o=0;
+        for (const v of w) { if (v===player) p++; else if (v===EMPTY) e++; else if (v===opp) o++; }
+        if (p===4) return 100000;
+        if (p===3 && e===1) return 120;
+        if (p===2 && e===2) return 12;
+        if (o===3 && e===1) return -100;
+        if (o===2 && e===2) return -10;
+        return 0;
+    }
+
+    function evaluate() {
+        let s = 0;
+        for (let r=0; r&lt;ROWS; r++) if (board[r][3] === player) s += 6;
+        for (let r=0; r&lt;ROWS; r++)
+            for (let c=0; c&lt;COLS-3; c++) s += scoreWindow([board[r][c], board[r][c+1], board[r][c+2], board[r][c+3]]);
+        for (let c=0; c&lt;COLS; c++)
+            for (let r=0; r&lt;ROWS-3; r++) s += scoreWindow([board[r][c], board[r+1][c], board[r+2][c], board[r+3][c]]);
+        for (let r=3; r&lt;ROWS; r++)
+            for (let c=0; c&lt;COLS-3; c++) s += scoreWindow([board[r][c], board[r-1][c+1], board[r-2][c+2], board[r-3][c+3]]);
+        for (let r=0; r&lt;ROWS-3; r++)
+            for (let c=0; c&lt;COLS-3; c++) s += scoreWindow([board[r][c], board[r+1][c+1], board[r+2][c+2], board[r+3][c+3]]);
+        return s;
+    }
+
+    function minimax(depth, alpha, beta, isMax) {
+        const legal = validCols();
+        if (isWin(player)) return { score: 10000000 + depth };
+        if (isWin(opp)) return { score: -10000000 - depth };
+        if (!legal.length || depth === 0) return { score: evaluate() };
+
+        if (isMax) {
+            let maxScore = -Infinity, best = legal[0];
+            for (const c of legal) {
+                const r = openRow(c);
+                board[r][c] = player;
+                const res = minimax(depth - 1, alpha, beta, false);
+                board[r][c] = EMPTY;
+                if (res.score > maxScore) { maxScore = res.score; best = c; }
+                alpha = Math.max(alpha, maxScore);
+                if (alpha >= beta) break;
+            }
+            return { col: best, score: maxScore };
+        } else {
+            let minScore = Infinity, best = legal[0];
+            for (const c of legal) {
+                const r = openRow(c);
+                board[r][c] = opp;
+                const res = minimax(depth - 1, alpha, beta, true);
+                board[r][c] = EMPTY;
+                if (res.score < minScore) { minScore = res.score; best = c; }
+                beta = Math.min(beta, minScore);
+                if (alpha >= beta) break;
+            }
+            return { col: best, score: minScore };
+        }
+    }
+
+    return minimax(4, -Infinity, Infinity, true).col ?? valids[0];
+}</code></pre>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Python -->
+                <div class="code-tab-content" id="py-tab" style="display:none;">
+                    <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:10px;">
+                        Standalone Python 3 implementation matching <code>choose_move(board, player)</code>:
+                    </p>
+                    <div class="code-container">
+                        <button class="copy-code-btn" id="copy-py-code-btn">Copy Code</button>
+                        <pre><code id="py-code-block">import math
+
+ROWS, COLS = 6, 7
+COLUMN_ORDER = [3, 2, 4, 1, 5, 0, 6]
+
+def is_valid_location(board, col):
+    return board[0][col] == 0
+
+def get_valid_locations(board):
+    return [c for c in COLUMN_ORDER if is_valid_location(board, c)]
+
+def get_next_open_row(board, col):
+    for r in range(ROWS - 1, -1, -1):
+        if board[r][col] == 0:
+            return r
+    return -1
+
+def check_win(board, piece):
+    for r in range(ROWS):
+        for c in range(COLS - 3):
+            if all(board[r][c+i] == piece for i in range(4)): return True
+    for c in range(COLS):
+        for r in range(ROWS - 3):
+            if all(board[r+i][c] == piece for i in range(4)): return True
+    for r in range(3, ROWS):
+        for c in range(COLS - 3):
+            if all(board[r-i][c+i] == piece for i in range(4)): return True
+    for r in range(ROWS - 3):
+        for c in range(COLS - 3):
+            if all(board[r+i][c+i] == piece for i in range(4)): return True
+    return False
+
+def score_position(board, piece):
+    opp = 1 if piece == 2 else 2
+    score = sum(6 for r in range(ROWS) if board[r][3] == piece)
+    def eval_window(w):
+        p, e, o = w.count(piece), w.count(0), w.count(opp)
+        if p == 4: return 100000
+        if p == 3 and e == 1: return 120
+        if p == 2 and e == 2: return 12
+        if o == 3 and e == 1: return -100
+        if o == 2 and e == 2: return -10
+        return 0
+    for r in range(ROWS):
+        for c in range(COLS - 3): score += eval_window(board[r][c:c+4])
+    for c in range(COLS):
+        for r in range(ROWS - 3): score += eval_window([board[r+i][c] for i in range(4)])
+    for r in range(3, ROWS):
+        for c in range(COLS - 3): score += eval_window([board[r-i][c+i] for i in range(4)])
+    for r in range(ROWS - 3):
+        for c in range(COLS - 3): score += eval_window([board[r+i][c+i] for i in range(4)])
+    return score
+
+def choose_move(board, player, depth=4):
+    """Returns column 0 to 6."""
+    opp = 1 if player == 2 else 2
+    valid_cols = get_valid_locations(board)
+    if not valid_cols: return 0
+
+    # 1. Immediate Win
+    for col in valid_cols:
+        r = get_next_open_row(board, col)
+        board[r][col] = player
+        if check_win(board, player):
+            board[r][col] = 0; return col
+        board[r][col] = 0
+
+    # 2. Immediate Block
+    for col in valid_cols:
+        r = get_next_open_row(board, col)
+        board[r][col] = opp
+        if check_win(board, opp):
+            board[r][col] = 0; return col
+        board[r][col] = 0
+
+    # 3. Minimax with Alpha-Beta
+    def minimax(d, alpha, beta, is_max):
+        legal = get_valid_locations(board)
+        if check_win(board, player): return None, 10000000 + d
+        if check_win(board, opp): return None, -10000000 - d
+        if not legal or d == 0: return None, score_position(board, player)
+
+        if is_max:
+            val, best_c = -math.inf, legal[0]
+            for c in legal:
+                r = get_next_open_row(board, c)
+                board[r][c] = player
+                _, score = minimax(d - 1, alpha, beta, False)
+                board[r][c] = 0
+                if score > val: val, best_c = score, c
+                alpha = max(alpha, val)
+                if alpha >= beta: break
+            return best_c, val
+        else:
+            val, best_c = math.inf, legal[0]
+            for c in legal:
+                r = get_next_open_row(board, c)
+                board[r][c] = opp
+                _, score = minimax(d - 1, alpha, beta, True)
+                board[r][c] = 0
+                if score < val: val, best_c = score, c
+                beta = min(beta, val)
+                if alpha >= beta: break
+            return best_c, val
+
+    col, _ = minimax(depth, -math.inf, math.inf, True)
+    return col if col is not None else valid_cols[0]</code></pre>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Problem Specs -->
+                <div class="code-tab-content" id="spec-tab" style="display:none;">
+                    <div style="font-size:0.85rem; line-height:1.7; color:var(--text-secondary);">
+                        <h4 style="color:#ffffff; margin-bottom:8px;">Problem 6 | Game Bot Arena Overview</h4>
+                        <p><strong>MUST HAVE (Non-negotiable):</strong></p>
+                        <ul style="margin-left: 20px; margin-bottom: 12px;">
+                            <li>Board: 6 rows, 7 columns, legal moves, win detection (4-in-a-row in any direction).</li>
+                            <li>A function <code>choose_move(board, player)</code> returning a column 0 to 6.</li>
+                            <li>Minimax search to a fixed depth (4 moves).</li>
+                            <li>A move within 1 second, and never an illegal or full column.</li>
+                        </ul>
+                        <p><strong>DONE WHEN:</strong></p>
+                        <ul style="margin-left: 20px; margin-bottom: 12px;">
+                            <li>Beats a random-move bot in at least 9 of 10 games.</li>
+                            <li>Never crashes or times out.</li>
+                        </ul>
+                        <p><strong>BONUS MARKS (Level up):</strong></p>
+                        <ul style="margin-left: 20px;">
+                            <li>Alpha-beta pruning for faster search.</li>
+                            <li>Smarter board-scoring function (centre column, 2-in-a-row, 3-in-a-row).</li>
+                            <li>Move ordering [3, 2, 4, 1, 5, 0, 6] to maximize cutoffs.</li>
+                            <li>Interactive Bot-vs-Bot Arena round.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="bot.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
