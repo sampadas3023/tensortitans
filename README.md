@@ -56,14 +56,25 @@ DONE WHEN REQUIREMENT: PASSED (COMPLIANT)
 
 ---
 
-## 🎨 Frontend Architecture & Motion Graphics
+## 👥 Play Online with a Friend (Chess.com-Style Invitations)
+
+- **Instant Shareable Invite Links**: Click **"Invite Friend"** to generate a custom game room code (e.g. `http://localhost:5000/?room=TITAN-A1B2`).
+- **One-Click Sharing**: Copy link directly to your clipboard or share instantly via WhatsApp.
+- **Auto-Join Lobby**: Anyone opening the invite link is automatically connected as Player 2 with real-time board synchronization!
+- **Quick Reaction Emotes**: Send real-time floating emotes (🔥, 👏, 🧠, 😮, ⚡, 🤝) during online matches.
+- **Rematch System**: Instantly request and accept rematches without creating a new room.
+
+---
+
+## 🎨 Enhanced 3D Board Architecture & Motion Graphics
 
 - **Luminous Crystal Aesthetic**: Clean ivory canvas (`#f1f5f9`) layered with floating ambient iridescent orbs (coral, sky azure, soft violet) that drift smoothly.
+- **Sapphire Arcade Chassis**: Double metallic border with chrome corner bolts, diagonal light-sheen reflections, and deep beveled circular wells.
+- **Interactive Column Energy Beam**: Hovering over any column illuminates a vertical light conduit, providing arcade-style aiming guidance.
+- **Hyper-Realistic Embossed Discs**: Concentric dashed ring detailing, specular curved glass reflections, and realistic gravity drop physics with landing squash-and-stretch.
 - **3D Tactile Buttons**: Dynamic curved specular highlights, animated light-beam sheens sweeping across buttons on hover, and tactile 3D press feedback.
-- **Sapphire Connect-4 Board**: Multi-layered glossy crystal blue chassis with beveled recessed slots.
-- **Squash & Stretch Drop Physics**: Discs fall with natural gravity easing, slightly stretching during descent and bouncing on landing.
-- **Victory Celebrations**: Automatic 90-particle confetti burst and holographic golden glow on winning discs.
-- **Web Audio API**: Procedurally synthesized drop thuds, hover clicks, victory fanfare chords, and buzzer tones (works offline with zero external audio files).
+- **Victory Celebrations**: Celebratory 90-particle confetti burst and holographic golden glow on winning discs.
+- **Web Audio API**: Procedurally synthesized drop thuds, hover clicks, friend-connect chimes, reaction pops, victory fanfare chords, and buzzer tones.
 
 ---
 

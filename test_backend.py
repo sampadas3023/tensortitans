@@ -113,6 +113,48 @@ class TestConnect4Bot(unittest.TestCase):
         self.assertEqual(data["total_games"], 5)
         self.assertGreaterEqual(data["bot_wins"], 4)
 
+    def test_online_room_multiplayer_flow(self):
+        """Tests full invite friend flow: create room, friend joins, makes moves, reacts."""
+        # 1. Host creates room
+        res = self.client.post("/api/rooms/create", json={"playerName": "Alice"})
+        self.assertEqual(res.status_code, 201)
+        create_data = res.get_json()
+        room_id = create_data["roomId"]
+        p1_token = create_data["token"]
+        self.assertTrue(room_id.startswith("TITAN-"))
+
+        # 2. Friend joins room
+        res_join = self.client.post("/api/rooms/join", json={"roomId": room_id, "playerName": "Bob"})
+        self.assertEqual(res_join.status_code, 200)
+        join_data = res_join.get_json()
+        p2_token = join_data["token"]
+        self.assertTrue(join_data["state"]["player2_joined"])
+
+        # 3. Host makes move on col 3
+        res_m1 = self.client.post(f"/api/rooms/{room_id}/move", json={"token": p1_token, "col": 3})
+        self.assertEqual(res_m1.status_code, 200)
+        m1_data = res_m1.get_json()
+        self.assertEqual(m1_data["state"]["board"][5][3], 1)
+        self.assertEqual(m1_data["state"]["current_player"], 2)
+
+        # 4. Friend makes move on col 3
+        res_m2 = self.client.post(f"/api/rooms/{room_id}/move", json={"token": p2_token, "col": 3})
+        self.assertEqual(res_m2.status_code, 200)
+        m2_data = res_m2.get_json()
+        self.assertEqual(m2_data["state"]["board"][4][3], 2)
+        self.assertEqual(m2_data["state"]["current_player"], 1)
+
+        # 5. Friend sends emoji reaction
+        res_react = self.client.post(f"/api/rooms/{room_id}/react", json={"token": p2_token, "emote": "🔥"})
+        self.assertEqual(res_react.status_code, 200)
+
+        # 6. Fetch room state
+        res_state = self.client.get(f"/api/rooms/{room_id}?token={p1_token}")
+        self.assertEqual(res_state.status_code, 200)
+        state_data = res_state.get_json()
+        self.assertEqual(len(state_data["state"]["moves"]), 2)
+        self.assertEqual(len(state_data["state"]["reactions"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

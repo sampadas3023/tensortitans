@@ -230,6 +230,278 @@ def api_duel():
 
 
 # --------------------------------------------------------------------------
+# Online Multiplayer Room Management (Chess.com-style Invite Friend System)
+# --------------------------------------------------------------------------
+import uuid
+import secrets
+
+rooms = {}
+
+def get_winning_cells_2d(board, piece):
+    """Finds exact 4 winning cell coordinates for UI laser and highlights."""
+    # Horizontal
+    for r in range(ROWS):
+        for c in range(COLS - 3):
+            if all(board[r][c+i] == piece for i in range(4)):
+                return [{"row": r, "col": c+i} for i in range(4)]
+    # Vertical
+    for c in range(COLS):
+        for r in range(ROWS - 3):
+            if all(board[r+i][c] == piece for i in range(4)):
+                return [{"row": r+i, "col": c} for i in range(4)]
+    # Diagonal Up-Right
+    for r in range(3, ROWS):
+        for c in range(COLS - 3):
+            if all(board[r-i][c+i] == piece for i in range(4)):
+                return [{"row": r-i, "col": c+i} for i in range(4)]
+    # Diagonal Down-Right
+    for r in range(ROWS - 3):
+        for c in range(COLS - 3):
+            if all(board[r+i][c+i] == piece for i in range(4)):
+                return [{"row": r+i, "col": c+i} for i in range(4)]
+    return []
+
+def sanitize_room_state(room, viewer_token=None):
+    """Produces clean state for the client without leaking private tokens."""
+    return {
+        "id": room["id"],
+        "board": room["board"],
+        "current_player": room["current_player"],
+        "version": room["version"],
+        "winner": room["winner"],
+        "winning_cells": room["winning_cells"],
+        "moves": room["moves"],
+        "player1_name": room["player1_name"],
+        "player2_name": room["player2_name"],
+        "player2_joined": room["player2_token"] is not None,
+        "is_your_turn": (
+            (viewer_token == room["player1_token"] and room["current_player"] == 1) or
+            (viewer_token == room["player2_token"] and room["current_player"] == 2)
+        ) if viewer_token else False,
+        "your_player_num": 1 if viewer_token == room["player1_token"] else (2 if viewer_token == room["player2_token"] else 0),
+        "reactions": room["reactions"][-5:] if "reactions" in room else []
+    }
+
+@app.route("/api/rooms/create", methods=["POST"])
+def api_room_create():
+    """Creates a new shareable game room."""
+    data = request.get_json(force=True, silent=True) or {}
+    player_name = str(data.get("playerName", "Host")).strip()[:20] or "Host"
+    color_pref = int(data.get("colorPref", 1)) # 1=Red, 2=Cyan, 0=Random
+
+    room_code = f"TITAN-{secrets.token_hex(2).upper()}"
+    p1_token = str(uuid.uuid4())
+
+    rooms[room_code] = {
+        "id": room_code,
+        "created_at": time.time(),
+        "last_active": time.time(),
+        "board": [[EMPTY for _ in range(COLS)] for _ in range(ROWS)],
+        "current_player": 1,
+        "player1_token": p1_token,
+        "player2_token": None,
+        "player1_name": player_name,
+        "player2_name": None,
+        "winner": None,
+        "winning_cells": [],
+        "moves": [],
+        "version": 1,
+        "reactions": []
+    }
+
+    return jsonify({
+        "status": "success",
+        "roomId": room_code,
+        "token": p1_token,
+        "playerNum": 1,
+        "shareUrl": f"/?room={room_code}"
+    }), 201
+
+@app.route("/api/rooms/join", methods=["POST"])
+def api_room_join():
+    """Allows a friend to join an existing game room."""
+    data = request.get_json(force=True, silent=True) or {}
+    room_id = str(data.get("roomId", "")).strip().upper()
+    player_name = str(data.get("playerName", "Guest")).strip()[:20] or "Guest"
+
+    if room_id not in rooms:
+        return jsonify({"error": "Room not found. Please verify your game code."}), 404
+
+    room = rooms[room_id]
+
+    # If reconnecting existing player
+    token = data.get("token")
+    if token and (token == room["player1_token"] or token == room["player2_token"]):
+        player_num = 1 if token == room["player1_token"] else 2
+        return jsonify({
+            "status": "success",
+            "token": token,
+            "playerNum": player_num,
+            "state": sanitize_room_state(room, token)
+        }), 200
+
+    # New guest joining
+    if room["player2_token"] is not None:
+        return jsonify({"error": "This room already has 2 players."}), 403
+
+    p2_token = str(uuid.uuid4())
+    room["player2_token"] = p2_token
+    room["player2_name"] = player_name
+    room["version"] += 1
+    room["last_active"] = time.time()
+
+    return jsonify({
+        "status": "success",
+        "roomId": room_id,
+        "token": p2_token,
+        "playerNum": 2,
+        "state": sanitize_room_state(room, p2_token)
+    }), 200
+
+@app.route("/api/rooms/<room_id>", methods=["GET"])
+def api_room_state(room_id):
+    """
+    Fetches real-time room state.
+    Supports long-polling (up to 2.5 seconds) if client passes current version.
+    """
+    room_id = room_id.upper()
+    if room_id not in rooms:
+        return jsonify({"error": "Room not found."}), 404
+
+    room = rooms[room_id]
+    token = request.args.get("token")
+    client_version = request.args.get("version", type=int)
+
+    # Long polling: if version matches, wait briefly for an update
+    if client_version is not None and client_version == room["version"]:
+        for _ in range(12):  # poll up to ~2.4s
+            time.sleep(0.2)
+            if room["version"] != client_version:
+                break
+
+    return jsonify({
+        "status": "success",
+        "state": sanitize_room_state(room, token)
+    }), 200
+
+@app.route("/api/rooms/<room_id>/move", methods=["POST"])
+def api_room_move(room_id):
+    """Executes a move in the multiplayer room."""
+    room_id = room_id.upper()
+    if room_id not in rooms:
+        return jsonify({"error": "Room not found."}), 404
+
+    room = rooms[room_id]
+    data = request.get_json(force=True, silent=True) or {}
+    token = data.get("token")
+    col = data.get("col")
+
+    if token not in (room["player1_token"], room["player2_token"]):
+        return jsonify({"error": "Invalid player authorization token."}), 403
+
+    player_num = 1 if token == room["player1_token"] else 2
+    if room["current_player"] != player_num:
+        return jsonify({"error": "Not your turn."}), 400
+
+    if room["winner"] is not None:
+        return jsonify({"error": "Game is already over."}), 400
+
+    if col is None or not (0 <= col < COLS):
+        return jsonify({"error": "Invalid column index."}), 400
+
+    board = room["board"]
+    if board[0][col] != EMPTY:
+        return jsonify({"error": "Column is full."}), 400
+
+    # Drop piece
+    row = -1
+    for r in range(ROWS - 1, -1, -1):
+        if board[r][col] == EMPTY:
+            board[r][col] = player_num
+            row = r
+            break
+
+    room["moves"].append({
+        "player": player_num,
+        "row": row,
+        "col": col,
+        "timestamp": time.time()
+    })
+
+    # Check win
+    winning_cells = get_winning_cells_2d(board, player_num)
+    if winning_cells:
+        room["winner"] = player_num
+        room["winning_cells"] = winning_cells
+    elif not any(board[0][c] == EMPTY for c in range(COLS)):
+        room["winner"] = "draw"
+        room["winning_cells"] = []
+    else:
+        room["current_player"] = 2 if player_num == 1 else 1
+
+    room["version"] += 1
+    room["last_active"] = time.time()
+
+    return jsonify({
+        "status": "success",
+        "state": sanitize_room_state(room, token)
+    }), 200
+
+@app.route("/api/rooms/<room_id>/react", methods=["POST"])
+def api_room_react(room_id):
+    """Sends floating reaction emote to the opponent."""
+    room_id = room_id.upper()
+    if room_id not in rooms:
+        return jsonify({"error": "Room not found."}), 404
+
+    room = rooms[room_id]
+    data = request.get_json(force=True, silent=True) or {}
+    token = data.get("token")
+    emote = str(data.get("emote", "🔥"))[:4]
+
+    if token not in (room["player1_token"], room["player2_token"]):
+        return jsonify({"error": "Unauthorized."}), 403
+
+    sender_num = 1 if token == room["player1_token"] else 2
+    room["reactions"].append({
+        "id": secrets.token_hex(4),
+        "sender": sender_num,
+        "emote": emote,
+        "time": time.time()
+    })
+    room["version"] += 1
+    return jsonify({"status": "success"}), 200
+
+@app.route("/api/rooms/<room_id>/rematch", methods=["POST"])
+def api_room_rematch(room_id):
+    """Resets the board for a new game in the same room."""
+    room_id = room_id.upper()
+    if room_id not in rooms:
+        return jsonify({"error": "Room not found."}), 404
+
+    room = rooms[room_id]
+    data = request.get_json(force=True, silent=True) or {}
+    token = data.get("token")
+
+    if token not in (room["player1_token"], room["player2_token"]):
+        return jsonify({"error": "Unauthorized."}), 403
+
+    # Reset game
+    room["board"] = [[EMPTY for _ in range(COLS)] for _ in range(ROWS)]
+    room["current_player"] = 1
+    room["winner"] = None
+    room["winning_cells"] = []
+    room["moves"] = []
+    room["version"] += 1
+    room["last_active"] = time.time()
+
+    return jsonify({
+        "status": "success",
+        "state": sanitize_room_state(room, token)
+    }), 200
+
+
+# --------------------------------------------------------------------------
 # Health & Status Endpoint
 # --------------------------------------------------------------------------
 @app.route("/api/health")
@@ -243,10 +515,17 @@ def api_health():
         "default_depth": 4,
         "max_turn_limit_ms": 1000,
         "average_turn_latency_ms": 3.5,
+        "active_multiplayer_rooms": len(rooms),
         "endpoints": [
             "POST /api/choose_move",
             "POST /api/benchmark",
             "POST /api/duel",
+            "POST /api/rooms/create",
+            "POST /api/rooms/join",
+            "GET  /api/rooms/<id>",
+            "POST /api/rooms/<id>/move",
+            "POST /api/rooms/<id>/react",
+            "POST /api/rooms/<id>/rematch",
             "GET  /api/health"
         ]
     }), 200

@@ -1290,6 +1290,407 @@ html, body {
 }
 
 /* ==========================================================================
+   ENHANCED 3D BOARD CHASSIS, SCREWS & COLUMN ENERGY BEAM
+   ========================================================================== */
+.board-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.board-screw {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffffff 0%, #cbd5e1 50%, #64748b 100%);
+    border: 1px solid #94a3b8;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.8);
+    z-index: 5;
+    pointer-events: none;
+}
+
+.board-screw::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 20%;
+    right: 20%;
+    height: 1.5px;
+    background: #475569;
+    transform: translateY(-50%) rotate(45deg);
+}
+
+.screw-tl { top: 8px; left: 8px; }
+.screw-tr { top: 8px; right: 8px; }
+.screw-bl { bottom: 8px; left: 8px; }
+.screw-br { bottom: 8px; right: 8px; }
+
+/* Interactive Column Guide Energy Beam */
+.board-column {
+    position: relative;
+    transition: background-color 0.15s ease;
+}
+
+.board-column::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: -2px;
+    right: -2px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(56, 189, 248, 0.25) 100%);
+    border-radius: 16px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.5);
+    z-index: 1;
+}
+
+.board-column:hover::before {
+    opacity: 1;
+}
+
+/* Concentric Embossed Center Ring on Discs */
+.disc::before {
+    content: '';
+    position: absolute;
+    top: 16%;
+    left: 16%;
+    right: 16%;
+    bottom: 16%;
+    border-radius: 50%;
+    border: 1.5px dashed rgba(255, 255, 255, 0.35);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+}
+
+/* ==========================================================================
+   ONLINE MULTIPLAYER ROOM HUD & CHESS.COM-STYLE INVITATIONS
+   ========================================================================== */
+.online-match-hud {
+    width: 100%;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1.5px solid #3b82f6;
+    border-radius: var(--radius-md);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.15);
+    animation: fadeIn 0.3s ease;
+}
+
+.online-hud-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.online-live-indicator {
+    width: 10px;
+    height: 10px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #10b981;
+    display: inline-block;
+    animation: pulseDot 1.4s infinite;
+}
+
+.online-room-title {
+    font-size: 0.88rem;
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+.copy-small-btn {
+    background: #ffffff;
+    border: 1px solid #bfdbfe;
+    color: #1d4ed8;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.copy-small-btn:hover {
+    background: #1d4ed8;
+    color: #ffffff;
+}
+
+.online-hud-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.online-status-badge {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1e40af;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 4px 12px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.leave-room-btn {
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+    color: #dc2626;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.leave-room-btn:hover {
+    background: #dc2626;
+    color: #ffffff;
+}
+
+/* Quick Reaction Emotes Bar */
+.reactions-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 8px;
+    padding: 8px 18px;
+    background: #ffffff;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-sm);
+}
+
+.reactions-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.reaction-btn {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 1.15rem;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.reaction-btn:hover {
+    transform: scale(1.28) translateY(-3px);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+    background: #ffffff;
+}
+
+/* Floating Emotes Animation on Board */
+.floating-emotes-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 50;
+}
+
+.floating-emote-bubble {
+    position: absolute;
+    bottom: 20px;
+    font-size: 2.2rem;
+    animation: floatReaction 2.2s forwards cubic-bezier(0.2, 0.8, 0.2, 1);
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.2));
+}
+
+@keyframes floatReaction {
+    0% { transform: translateY(0) scale(0.6); opacity: 0; }
+    20% { transform: translateY(-40px) scale(1.2); opacity: 1; }
+    80% { transform: translateY(-220px) scale(1); opacity: 0.9; }
+    100% { transform: translateY(-300px) scale(0.8); opacity: 0; }
+}
+
+/* Invite Modal Form Elements */
+.invite-modal-content {
+    max-width: 540px;
+}
+
+.invite-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.custom-input {
+    width: 100%;
+    background: #f8fafc;
+    border: 1.5px solid var(--border-subtle);
+    color: var(--text-primary);
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.92rem;
+    font-family: var(--font-main);
+    font-weight: 600;
+    outline: none;
+    transition: var(--transition-fast);
+}
+
+.custom-input:focus {
+    border-color: #3b82f6;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.color-picker-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.color-radio-label {
+    cursor: pointer;
+}
+
+.color-radio-label input {
+    display: none;
+}
+
+.color-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 700;
+    border: 2px solid transparent;
+    transition: var(--transition-fast);
+}
+
+.color-radio-label input:checked + .red-badge {
+    background: #fee2e2;
+    color: #dc2626;
+    border-color: #ef4444;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.color-radio-label input:checked + .cyan-badge {
+    background: #e0f2fe;
+    color: #0284c7;
+    border-color: #0284c7;
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2);
+}
+
+.color-radio-label input:not(:checked) + .color-badge {
+    background: #f1f5f9;
+    color: var(--text-muted);
+}
+
+.invite-link-box {
+    margin-top: 14px;
+    padding: 16px;
+    background: #f0fdf4;
+    border: 1.5px solid #86efac;
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.waiting-radar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.radar-ping {
+    width: 14px;
+    height: 14px;
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 12px #10b981;
+    animation: radarPulse 1.5s infinite;
+}
+
+@keyframes radarPulse {
+    0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.waiting-text {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #166534;
+}
+
+.link-display-wrap {
+    display: flex;
+    gap: 8px;
+}
+
+.share-helper-links {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.share-icon-btn {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: var(--transition-fast);
+}
+
+.whatsapp-btn {
+    background: #25d366;
+    color: #ffffff;
+}
+
+.whatsapp-btn:hover {
+    background: #1ebd57;
+}
+
+.code-copy-btn {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #1e293b;
+}
+
+.code-copy-btn:hover {
+    background: #f1f5f9;
+}
+
+/* ==========================================================================
    MOBILE & RESPONSIVE ADJUSTMENTS
    ========================================================================== */
 @media (max-width: 768px) {
@@ -1312,3 +1713,4 @@ html, body {
         overflow-x: auto;
     }
 }
+

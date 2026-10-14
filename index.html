@@ -47,10 +47,22 @@
                 <button class="nav-mode-btn" data-mode="bvb" id="mode-bvb-btn">
                     <span>🤖</span> Bot vs Bot Duel
                 </button>
+                <button class="nav-mode-btn" data-mode="online" id="mode-online-btn">
+                    <span>👥</span> Play a Friend
+                </button>
             </nav>
 
             <!-- Quick Action Toolbar -->
             <div class="header-actions">
+                <button class="pill-action-btn invite-btn" id="open-invite-modal-btn" title="Invite a friend to play online">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/>
+                        <line x1="23" y1="11" x2="17" y2="11"/>
+                    </svg>
+                    <span>Invite Friend</span>
+                </button>
                 <button class="icon-btn" id="sound-toggle-btn" title="Toggle Sound FX" aria-label="Toggle Sound FX">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 5L6 9H2v6h4l5 4V5z"/>
@@ -112,6 +124,24 @@
             <!-- CENTER STAGE: Connect-4 Board -->
             <section class="board-stage">
                 
+                <!-- Online Match Room HUD (Active during Online Matches) -->
+                <div class="online-match-hud" id="online-match-hud" style="display: none;">
+                    <div class="online-hud-left">
+                        <span class="online-live-indicator"></span>
+                        <span class="online-room-title">Room: <strong id="online-room-id-display">TITAN-XXXX</strong></span>
+                        <button class="copy-small-btn" id="copy-room-link-btn" title="Copy Invite Link">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                            <span>Copy Link</span>
+                        </button>
+                    </div>
+                    <div class="online-hud-right">
+                        <span id="online-opponent-status" class="online-status-badge">Waiting for friend...</span>
+                        <button class="leave-room-btn" id="leave-room-btn" title="Leave Online Game">Leave</button>
+                    </div>
+                </div>
+
                 <!-- Status Banner -->
                 <div class="status-banner" id="game-status-banner">
                     <div class="status-text-wrap">
@@ -126,9 +156,18 @@
                     <!-- Injected dynamically via game.js -->
                 </div>
 
-                <!-- The 6x7 Connect-4 Board -->
-                <div class="connect4-board" id="connect4-board" role="grid" aria-label="Connect 4 Game Board">
-                    <!-- Injected dynamically via game.js -->
+                <!-- The 6x7 Connect-4 Board with Chassis Screws & Laser Overlay -->
+                <div class="board-wrapper">
+                    <div class="connect4-board" id="connect4-board" role="grid" aria-label="Connect 4 Game Board">
+                        <!-- Corner Rivets -->
+                        <div class="board-screw screw-tl"></div>
+                        <div class="board-screw screw-tr"></div>
+                        <div class="board-screw screw-bl"></div>
+                        <div class="board-screw screw-br"></div>
+                        <!-- Slots injected dynamically via game.js -->
+                    </div>
+                    <!-- Floating Emotes Container -->
+                    <div class="floating-emotes-container" id="floating-emotes-container"></div>
                 </div>
 
                 <!-- Board Action Controls -->
@@ -151,6 +190,17 @@
                         </svg>
                         <span>Force AI Move</span>
                     </button>
+                </div>
+
+                <!-- Floating Quick Reactions Bar (Chess.com Style) -->
+                <div class="reactions-bar" id="reactions-bar">
+                    <span class="reactions-label">Quick Reactions:</span>
+                    <button class="reaction-btn" data-emote="🔥" title="Fire Move!">🔥</button>
+                    <button class="reaction-btn" data-emote="👏" title="Good Game!">👏</button>
+                    <button class="reaction-btn" data-emote="🧠" title="Big Brain!">🧠</button>
+                    <button class="reaction-btn" data-emote="😮" title="Shocking!">😮</button>
+                    <button class="reaction-btn" data-emote="⚡" title="Titan Speed!">⚡</button>
+                    <button class="reaction-btn" data-emote="🤝" title="Well Played!">🤝</button>
                 </div>
             </section>
 
@@ -636,6 +686,100 @@ def choose_move(board, player, depth=4):
                             <li>Interactive Bot-vs-Bot Arena round.</li>
                         </ul>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==========================================
+         INVITE FRIEND & ONLINE LOBBY MODAL (Chess.com Style)
+         ========================================== -->
+    <div class="modal-overlay" id="invite-friend-modal">
+        <div class="modal-content invite-modal-content">
+            <div class="modal-header">
+                <h3 style="display:flex; align-items:center; gap:8px;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/>
+                        <line x1="23" y1="11" x2="17" y2="11"/>
+                    </svg>
+                    Play with a Friend Online
+                </h3>
+                <button class="icon-btn" id="close-invite-modal-btn" aria-label="Close Modal">&times;</button>
+            </div>
+
+            <div class="modal-tabs">
+                <button class="modal-tab-btn active" data-target="create-room-tab">Create Invite Link</button>
+                <button class="modal-tab-btn" data-target="join-room-tab">Join with Code</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Tab 1: Create Game Room -->
+                <div class="code-tab-content" id="create-room-tab">
+                    <div class="invite-form-group">
+                        <label class="control-label" for="host-player-name">Your Display Name</label>
+                        <input type="text" id="host-player-name" class="custom-input" placeholder="e.g. Master Titan" value="Player 1" maxlength="20">
+                    </div>
+
+                    <div class="invite-form-group">
+                        <label class="control-label">Your Disc Color</label>
+                        <div class="color-picker-group">
+                            <label class="color-radio-label">
+                                <input type="radio" name="color-choice" value="1" checked>
+                                <span class="color-badge red-badge">Red (Plays First)</span>
+                            </label>
+                            <label class="color-radio-label">
+                                <input type="radio" name="color-choice" value="2">
+                                <span class="color-badge cyan-badge">Cyan (Plays Second)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button class="btn-primary" id="create-room-btn" style="width: 100%; margin-top: 10px;">
+                        <span>⚡ Create Game & Generate Invite Link</span>
+                    </button>
+
+                    <!-- Active Invite Link Box (Hidden until room is generated) -->
+                    <div class="invite-link-box" id="invite-link-box" style="display: none;">
+                        <div class="waiting-radar-wrap">
+                            <div class="radar-ping"></div>
+                            <span class="waiting-text" id="waiting-radar-text">Waiting for your friend to join...</span>
+                        </div>
+
+                        <div class="link-display-wrap">
+                            <input type="text" id="shareable-link-input" class="custom-input" readonly>
+                            <button class="btn-primary" id="copy-invite-link-btn" style="padding: 10px 18px;">
+                                <span>Copy Link</span>
+                            </button>
+                        </div>
+
+                        <div class="share-helper-links">
+                            <a href="#" id="share-whatsapp-btn" target="_blank" class="share-icon-btn whatsapp-btn">
+                                <span>Share via WhatsApp</span>
+                            </a>
+                            <button class="share-icon-btn code-copy-btn" id="copy-just-code-btn">
+                                <span>Copy Game Code: <strong id="just-code-display">TITAN-XXXX</strong></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Join Existing Game Room -->
+                <div class="code-tab-content" id="join-room-tab" style="display: none;">
+                    <div class="invite-form-group">
+                        <label class="control-label" for="guest-player-name">Your Display Name</label>
+                        <input type="text" id="guest-player-name" class="custom-input" placeholder="e.g. Cyber Challenger" value="Player 2" maxlength="20">
+                    </div>
+
+                    <div class="invite-form-group">
+                        <label class="control-label" for="join-room-code-input">Game Room Code or Link</label>
+                        <input type="text" id="join-room-code-input" class="custom-input" placeholder="e.g. TITAN-A1B2 or paste full link">
+                    </div>
+
+                    <button class="btn-primary" id="submit-join-room-btn" style="width: 100%; margin-top: 10px;">
+                        <span>🚀 Join Friend's Game</span>
+                    </button>
                 </div>
             </div>
         </div>

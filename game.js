@@ -1,7 +1,11 @@
 /**
  * Connect-4 Game Arena Controller & UI Engine
- * Orchestrates rendering, audio synthesis, animations, player logic,
- * telemetry, bot-vs-bot tournaments, and Problem 6 verification benchmarks.
+ * Orchestrates:
+ *  - High-precision rendering & 3D realistic board animations
+ *  - Web Audio sound synthesizer (drop, hover, victory, join, reaction, buzzer)
+ *  - AI Telemetry & Problem 6 benchmark suites
+ *  - Chess.com-style Online Multiplayer ("Invite a Friend" with shareable rooms & live sync)
+ *  - Quick reaction emotes & victory confetti celebrations
  */
 
 class Connect4Game {
@@ -36,10 +40,21 @@ class Connect4Game {
         };
 
         // Arena & Tournament state
-        this.currentMode = 'pve'; // 'pve', 'bvb', 'benchmark', 'sandbox'
+        this.currentMode = 'pve'; // 'pve', 'bvb', 'online'
         this.botSpeedMs = 280;
         this.isDuelRunning = false;
         this.duelTimer = null;
+
+        // Online Multiplayer State (Chess.com Style)
+        this.onlineRoomId = null;
+        this.onlineToken = null;
+        this.onlinePlayerNum = 0; // 1 or 2
+        this.isOnlineMatch = false;
+        this.onlinePollingActive = false;
+        this.onlineVersion = 0;
+        this.onlineOpponentJoined = false;
+        this.onlineOpponentName = '';
+        this.seenReactionIds = new Set();
 
         // Web Audio Context setup
         this.audioCtx = null;
@@ -50,6 +65,9 @@ class Connect4Game {
         this.initEventListeners();
         this.renderBoard();
         this.updateUI();
+
+        // Auto-check for ?room=ROOM_ID in URL query parameters
+        this.checkUrlRoomParam();
     }
 
     createEmptyBoard() {
@@ -89,16 +107,36 @@ class Connect4Game {
         this.benchmarkTableBody = document.getElementById('benchmark-table-body');
         this.benchmarkSummaryElem = document.getElementById('benchmark-summary-box');
 
-        // Modal DOM
+        // Modal DOM (Code)
         this.codeModal = document.getElementById('code-modal');
         this.openCodeModalBtn = document.getElementById('open-code-modal-btn');
         this.closeCodeModalBtn = document.getElementById('close-code-modal-btn');
         this.copyJsBtn = document.getElementById('copy-js-code-btn');
         this.copyPyBtn = document.getElementById('copy-py-code-btn');
+
+        // Modal DOM (Invite Friend & Online Multiplayer)
+        this.inviteModal = document.getElementById('invite-friend-modal');
+        this.openInviteModalBtn = document.getElementById('open-invite-modal-btn');
+        this.closeInviteModalBtn = document.getElementById('close-invite-modal-btn');
+        this.createRoomBtn = document.getElementById('create-room-btn');
+        this.submitJoinRoomBtn = document.getElementById('submit-join-room-btn');
+        this.inviteLinkBox = document.getElementById('invite-link-box');
+        this.shareableLinkInput = document.getElementById('shareable-link-input');
+        this.copyInviteLinkBtn = document.getElementById('copy-invite-link-btn');
+        this.copyJustCodeBtn = document.getElementById('copy-just-code-btn');
+        this.shareWhatsappBtn = document.getElementById('share-whatsapp-btn');
+        this.justCodeDisplay = document.getElementById('just-code-display');
+
+        // Online HUD & Reactions DOM
+        this.onlineMatchHud = document.getElementById('online-match-hud');
+        this.onlineRoomIdDisplay = document.getElementById('online-room-id-display');
+        this.onlineOpponentStatus = document.getElementById('online-opponent-status');
+        this.copyRoomLinkBtn = document.getElementById('copy-room-link-btn');
+        this.leaveRoomBtn = document.getElementById('leave-room-btn');
+        this.floatingEmotesContainer = document.getElementById('floating-emotes-container');
     }
 
     initAudio() {
-        // Audio will be created upon first user interaction to satisfy browser autoplay policies
         const enableAudio = () => {
             if (!this.audioCtx) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -123,13 +161,13 @@ class Connect4Game {
             const now = this.audioCtx.currentTime;
 
             if (type === 'drop') {
-                // Realistic resonant wooden/glass drop impact
+                // Physical drop punch with sub-bass resonance
                 const osc = this.audioCtx.createOscillator();
                 const gain = this.audioCtx.createGain();
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(260, now);
                 osc.frequency.exponentialRampToValueAtTime(70, now + 0.14);
-                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.setValueAtTime(0.45, now);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
                 osc.connect(gain);
                 gain.connect(this.audioCtx.destination);
@@ -148,7 +186,7 @@ class Connect4Game {
                 osc.start(now);
                 osc.stop(now + 0.04);
             } else if (type === 'win') {
-                // Cyberpunk victory arpeggio chord
+                // Triumphant victory arpeggio chord
                 const notes = [440, 554.37, 659.25, 880];
                 notes.forEach((freq, idx) => {
                     const osc = this.audioCtx.createOscillator();
@@ -156,13 +194,42 @@ class Connect4Game {
                     osc.type = 'sine';
                     osc.frequency.setValueAtTime(freq, now + idx * 0.08);
                     gain.gain.setValueAtTime(0, now + idx * 0.08);
-                    gain.gain.linearRampToValueAtTime(0.2, now + idx * 0.08 + 0.03);
+                    gain.gain.linearRampToValueAtTime(0.25, now + idx * 0.08 + 0.03);
                     gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.45);
                     osc.connect(gain);
                     gain.connect(this.audioCtx.destination);
                     osc.start(now + idx * 0.08);
                     osc.stop(now + idx * 0.08 + 0.5);
                 });
+            } else if (type === 'join') {
+                // Cheerful chime when online friend joins room
+                const notes = [523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = this.audioCtx.createOscillator();
+                    const gain = this.audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.01, now + idx * 0.08);
+                    gain.gain.linearRampToValueAtTime(0.2, now + idx * 0.08 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.audioCtx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.4);
+                });
+            } else if (type === 'reaction') {
+                // Bubble pop for quick reactions
+                const osc = this.audioCtx.createOscillator();
+                const gain = this.audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+                osc.connect(gain);
+                gain.connect(this.audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.09);
             } else if (type === 'error') {
                 // Buzz tone for illegal action
                 const osc = this.audioCtx.createOscillator();
@@ -184,13 +251,17 @@ class Connect4Game {
     initEventListeners() {
         // Mode buttons
         document.querySelectorAll('.nav-mode-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', () => {
                 const mode = btn.dataset.mode;
-                this.setMode(mode);
+                if (mode === 'online') {
+                    this.openInviteModal('create');
+                } else {
+                    this.setMode(mode);
+                }
             });
         });
 
-        // Player 1 selector
+        // Player selectors
         const p1Select = document.getElementById('p1-type-select');
         if (p1Select) {
             p1Select.addEventListener('change', (e) => {
@@ -200,7 +271,6 @@ class Connect4Game {
             });
         }
 
-        // Player 2 selector
         const p2Select = document.getElementById('p2-type-select');
         if (p2Select) {
             p2Select.addEventListener('change', (e) => {
@@ -210,7 +280,7 @@ class Connect4Game {
             });
         }
 
-        // Depth selectors
+        // Depth selector
         const p2DepthSelect = document.getElementById('p2-depth-select');
         if (p2DepthSelect) {
             p2DepthSelect.addEventListener('change', (e) => {
@@ -230,28 +300,41 @@ class Connect4Game {
         }
 
         // Board buttons
-        this.newGameBtn.addEventListener('click', () => this.resetGame());
+        this.newGameBtn.addEventListener('click', () => {
+            if (this.isOnlineMatch) {
+                this.requestOnlineRematch();
+            } else {
+                this.resetGame();
+            }
+        });
         this.undoBtn.addEventListener('click', () => this.undoMove());
         this.botHintBtn.addEventListener('click', () => this.forceBotMove());
 
         // Code modal triggers
-        if (this.openCodeModalBtn) {
-            this.openCodeModalBtn.addEventListener('click', () => this.openModal());
-        }
-        if (this.closeCodeModalBtn) {
-            this.closeCodeModalBtn.addEventListener('click', () => this.closeModal());
-        }
+        if (this.openCodeModalBtn) this.openCodeModalBtn.addEventListener('click', () => this.openCodeModal());
+        if (this.closeCodeModalBtn) this.closeCodeModalBtn.addEventListener('click', () => this.closeCodeModal());
         if (this.codeModal) {
             this.codeModal.addEventListener('click', (e) => {
-                if (e.target === this.codeModal) this.closeModal();
+                if (e.target === this.codeModal) this.closeCodeModal();
+            });
+        }
+
+        // Invite Friend Modal triggers
+        if (this.openInviteModalBtn) this.openInviteModalBtn.addEventListener('click', () => this.openInviteModal('create'));
+        if (this.closeInviteModalBtn) this.closeInviteModalBtn.addEventListener('click', () => this.closeInviteModal());
+        if (this.inviteModal) {
+            this.inviteModal.addEventListener('click', (e) => {
+                if (e.target === this.inviteModal) this.closeInviteModal();
             });
         }
 
         // Modal Tab Switching
         document.querySelectorAll('.modal-tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.code-tab-content').forEach(c => c.style.display = 'none');
+                const parentModal = btn.closest('.modal-content');
+                if (!parentModal) return;
+                parentModal.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+                parentModal.querySelectorAll('.code-tab-content').forEach(c => c.style.display = 'none');
                 btn.classList.add('active');
                 const target = document.getElementById(btn.dataset.target);
                 if (target) target.style.display = 'block';
@@ -278,6 +361,22 @@ class Connect4Game {
             });
         }
 
+        // Online Room Actions
+        if (this.createRoomBtn) this.createRoomBtn.addEventListener('click', () => this.createOnlineRoom());
+        if (this.submitJoinRoomBtn) this.submitJoinRoomBtn.addEventListener('click', () => this.submitJoinOnlineRoom());
+        if (this.copyInviteLinkBtn) this.copyInviteLinkBtn.addEventListener('click', () => this.copyInviteLink());
+        if (this.copyJustCodeBtn) this.copyJustCodeBtn.addEventListener('click', () => this.copyGameCodeOnly());
+        if (this.copyRoomLinkBtn) this.copyRoomLinkBtn.addEventListener('click', () => this.copyInviteLink());
+        if (this.leaveRoomBtn) this.leaveRoomBtn.addEventListener('click', () => this.leaveOnlineRoom());
+
+        // Quick Reaction Emotes buttons
+        document.querySelectorAll('.reaction-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const emote = btn.dataset.emote;
+                this.sendReaction(emote);
+            });
+        });
+
         // Benchmark Runner Trigger
         if (this.runBenchmarkBtn) {
             this.runBenchmarkBtn.addEventListener('click', () => this.runProblem6Benchmark(10));
@@ -292,7 +391,21 @@ class Connect4Game {
         }
     }
 
+    checkUrlRoomParam() {
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            const room = urlParams.get('room');
+            if (room) {
+                this.openInviteModal('join', room.toUpperCase());
+            }
+        } catch (e) {}
+    }
+
     setMode(mode) {
+        if (this.isOnlineMatch && mode !== 'online') {
+            this.leaveOnlineRoom();
+        }
+
         this.currentMode = mode;
         document.querySelectorAll('.nav-mode-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.mode === mode);
@@ -317,7 +430,9 @@ class Connect4Game {
     }
 
     renderBoard() {
-        this.boardElem.innerHTML = '';
+        // Clear slots but keep corner screws
+        const existingSlots = this.boardElem.querySelectorAll('.board-column');
+        existingSlots.forEach(s => s.remove());
         this.hoverBarElem.innerHTML = '';
 
         // Create hover indicator slots
@@ -368,10 +483,21 @@ class Connect4Game {
     }
 
     handleColumnClick(col) {
-        if (this.isGameOver || this.isAiThinking) return;
+        if (this.isGameOver) return;
 
-        // If current player is a bot in interactive mode, ignore user click
-        if (this.playerTypes[this.currentPlayer] !== 'human') {
+        // Online Multiplayer Move Handling
+        if (this.isOnlineMatch) {
+            if (this.currentPlayer !== this.onlinePlayerNum) {
+                this.playSound('error');
+                this.statusMsgElem.innerText = `⏳ Waiting for opponent's turn...`;
+                return;
+            }
+            this.sendOnlineMove(col);
+            return;
+        }
+
+        // Offline bot check
+        if (this.isAiThinking || this.playerTypes[this.currentPlayer] !== 'human') {
             return;
         }
 
@@ -420,8 +546,10 @@ class Connect4Game {
         this.updateUI();
         this.updateTelemetryVisuals();
 
-        // Check if next player is a bot
-        this.checkNextTurn();
+        // Check if next player is an offline bot
+        if (!this.isOnlineMatch) {
+            this.checkNextTurn();
+        }
         return true;
     }
 
@@ -429,9 +557,7 @@ class Connect4Game {
         const cell = document.getElementById(`cell-${row}-${col}`);
         if (!cell) return;
 
-        // Clear existing disc if any
         cell.innerHTML = '';
-
         const disc = document.createElement('div');
         disc.className = `disc player-${player} dropping`;
 
@@ -441,7 +567,6 @@ class Connect4Game {
 
         cell.appendChild(disc);
 
-        // Update column full status if topmost cell is occupied
         if (this.board[0][col] !== 0) {
             const colElem = document.querySelector(`.board-column[data-col="${col}"]`);
             if (colElem) colElem.classList.add('full');
@@ -449,14 +574,13 @@ class Connect4Game {
     }
 
     checkNextTurn() {
-        if (this.isGameOver) return;
+        if (this.isGameOver || this.isOnlineMatch) return;
 
         const pType = this.playerTypes[this.currentPlayer];
         if (pType !== 'human') {
             this.isAiThinking = true;
             this.updateUI();
 
-            // Run AI move after a slight delay to allow smooth animation
             const delay = this.currentMode === 'bvb' ? this.botSpeedMs : 250;
 
             setTimeout(async () => {
@@ -494,13 +618,11 @@ class Connect4Game {
                                 chosenCol = data.move;
                                 usedBackend = true;
                                 if (this.statTimeElem) {
-                                    this.statTimeElem.innerText = `${data.duration_ms} ms (Py Bitboard)`;
+                                    this.statTimeElem.innerText = `${data.duration_ms} ms (Bitboard)`;
                                 }
                             }
                         }
-                    } catch (e) {
-                        // Offline or standalone mode: fallback cleanly to JS engine
-                    }
+                    } catch (e) {}
 
                     if (!usedBackend) {
                         chosenCol = choose_move(this.board, this.currentPlayer, { depth: depth });
@@ -578,7 +700,7 @@ class Connect4Game {
             particles.forEach(p => {
                 p.x += p.vx;
                 p.y += p.vy;
-                p.vy += 0.38; // gravity
+                p.vy += 0.38;
                 p.rotation += p.vRot;
                 p.opacity = Math.max(0, 1 - (elapsed / 2500));
 
@@ -598,32 +720,32 @@ class Connect4Game {
     }
 
     updateUI() {
-        // Update player score elements
         if (this.p1ScoreElem) this.p1ScoreElem.innerText = this.scores[1];
         if (this.p2ScoreElem) this.p2ScoreElem.innerText = this.scores[2];
 
-        // Active Player Card highlighting
         if (this.p1CardElem && this.p2CardElem) {
             this.p1CardElem.classList.toggle('p1-active', this.currentPlayer === 1 && !this.isGameOver);
             this.p2CardElem.classList.toggle('p2-active', this.currentPlayer === 2 && !this.isGameOver);
         }
 
-        // Status banner
         if (this.moveCountElem) {
             this.moveCountElem.innerText = `Move: #${this.moveHistory.length + 1}`;
         }
 
         if (!this.isGameOver) {
-            const pType = this.playerTypes[this.currentPlayer];
             if (this.turnPillElem) {
                 this.turnPillElem.className = `turn-pill ${this.currentPlayer === 1 ? 'p1' : 'p2'}`;
                 this.turnPillElem.innerText = this.currentPlayer === 1 ? 'Player 1' : 'Player 2';
             }
 
-            if (this.isAiThinking) {
+            if (this.isOnlineMatch) {
+                const isYourTurn = this.currentPlayer === this.onlinePlayerNum;
+                this.statusMsgElem.innerText = isYourTurn ? "⚡ Your Turn: Click a column to drop disc" : "⏳ Opponent's Turn: Waiting for move...";
+                this.statusMsgElem.style.color = isYourTurn ? "var(--text-primary)" : "var(--p2-base)";
+            } else if (this.isAiThinking) {
                 this.statusMsgElem.innerText = `🤖 Bot thinking (evaluating minimax tree)...`;
                 this.statusMsgElem.style.color = 'var(--p2-base)';
-            } else if (pType === 'human') {
+            } else if (this.playerTypes[this.currentPlayer] === 'human') {
                 this.statusMsgElem.innerText = `Your Turn: Select a column to drop disc`;
                 this.statusMsgElem.style.color = 'var(--text-primary)';
             } else {
@@ -631,36 +753,32 @@ class Connect4Game {
             }
         }
 
-        // Update button states
         if (this.undoBtn) {
-            this.undoBtn.disabled = this.moveHistory.length === 0 || this.isAiThinking;
+            this.undoBtn.disabled = this.moveHistory.length === 0 || this.isAiThinking || this.isOnlineMatch;
         }
     }
 
     updateTelemetryVisuals() {
         const stats = window.getSearchStats ? window.getSearchStats() : null;
 
-        if (stats && this.statTimeElem) {
+        if (stats && this.statTimeElem && !this.isOnlineMatch) {
             this.statTimeElem.innerText = `${stats.durationMs.toFixed(1)} ms`;
             this.statNodesElem.innerText = stats.nodesEvaluated.toLocaleString();
             this.statCutoffsElem.innerText = stats.cutoffs.toLocaleString();
             this.statDepthElem.innerText = `Depth ${stats.depth}`;
         }
 
-        // Render Column Valuation Heatmap
         this.renderValuationHeatmap();
     }
 
     renderValuationHeatmap() {
         if (!this.valuationChartElem) return;
 
-        // Evaluate columns for current board
         const colScores = evaluateAllColumns(this.board, this.currentPlayer, 3);
         const validCols = getValidLocations(this.board);
 
         this.valuationChartElem.innerHTML = '';
 
-        // Find max and min scores for scaling
         let maxScore = -Infinity;
         let minScore = Infinity;
         validCols.forEach(c => {
@@ -707,9 +825,8 @@ class Connect4Game {
     }
 
     undoMove() {
-        if (this.moveHistory.length === 0 || this.isAiThinking) return;
+        if (this.moveHistory.length === 0 || this.isAiThinking || this.isOnlineMatch) return;
 
-        // If playing against bot, undo 2 moves (both bot and human) so it's human's turn again
         const isBotPlaying = this.playerTypes[1] !== this.playerTypes[2];
         const movesToUndo = (isBotPlaying && this.moveHistory.length >= 2) ? 2 : 1;
 
@@ -730,7 +847,6 @@ class Connect4Game {
         this.winner = null;
         this.winningCells = [];
 
-        // Remove any win glow
         document.querySelectorAll('.disc.winning-cell').forEach(d => d.classList.remove('winning-cell'));
 
         this.updateUI();
@@ -738,7 +854,7 @@ class Connect4Game {
     }
 
     forceBotMove() {
-        if (this.isGameOver || this.isAiThinking) return;
+        if (this.isGameOver || this.isAiThinking || this.isOnlineMatch) return;
         const col = choose_move(this.board, this.currentPlayer, { depth: this.botDepths[this.currentPlayer] || 4 });
         this.playMove(col);
     }
@@ -755,25 +871,383 @@ class Connect4Game {
         this.renderBoard();
         this.updateUI();
         this.updateTelemetryVisuals();
-        this.checkNextTurn();
+        if (!this.isOnlineMatch) {
+            this.checkNextTurn();
+        }
     }
 
-    openModal() {
+    // =========================================================================
+    // MODALS: CODE & ONLINE INVITE
+    // =========================================================================
+    openCodeModal() {
         if (this.codeModal) this.codeModal.classList.add('active');
     }
 
-    closeModal() {
+    closeCodeModal() {
         if (this.codeModal) this.codeModal.classList.remove('active');
     }
 
-    /**
-     * Automated Problem 6 Verification Benchmark Runner
-     * Executes 10 games head-to-head against Random Bot.
-     * Verifies:
-     * 1. Minimax Bot beats Random in >= 9 of 10 games
-     * 2. Every move responds within 1 second
-     * 3. Zero illegal moves / full column drops
-     */
+    openInviteModal(tab = 'create', prefillCode = '') {
+        if (this.inviteModal) {
+            this.inviteModal.classList.add('active');
+
+            // Switch to requested tab
+            const targetTabId = tab === 'join' ? 'join-room-tab' : 'create-room-tab';
+            this.inviteModal.querySelectorAll('.modal-tab-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.target === targetTabId);
+            });
+            this.inviteModal.querySelectorAll('.code-tab-content').forEach(c => {
+                c.style.display = c.id === targetTabId ? 'block' : 'none';
+            });
+
+            if (prefillCode) {
+                const codeInput = document.getElementById('join-room-code-input');
+                if (codeInput) codeInput.value = prefillCode;
+            }
+        }
+    }
+
+    closeInviteModal() {
+        if (this.inviteModal) this.inviteModal.classList.remove('active');
+    }
+
+    // =========================================================================
+    // CHESS.COM-STYLE ONLINE MULTIPLAYER ROOMS
+    // =========================================================================
+    async createOnlineRoom() {
+        const nameInput = document.getElementById('host-player-name');
+        const playerName = nameInput ? nameInput.value.trim() || 'Player 1' : 'Player 1';
+        const colorRadio = document.querySelector('input[name="color-choice"]:checked');
+        const colorPref = colorRadio ? parseInt(colorRadio.value, 10) : 1;
+
+        if (this.createRoomBtn) {
+            this.createRoomBtn.disabled = true;
+            this.createRoomBtn.innerHTML = '<span>Creating room...</span>';
+        }
+
+        try {
+            const res = await fetch('/api/rooms/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playerName, colorPref })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.status === 'success') {
+                this.onlineRoomId = data.roomId;
+                this.onlineToken = data.token;
+                this.onlinePlayerNum = 1;
+                this.isOnlineMatch = true;
+                this.onlineOpponentJoined = false;
+                this.currentMode = 'online';
+
+                // Update full shareable URL
+                const shareUrl = `${window.location.origin}/?room=${data.roomId}`;
+                if (this.shareableLinkInput) this.shareableLinkInput.value = shareUrl;
+                if (this.justCodeDisplay) this.justCodeDisplay.innerText = data.roomId;
+                if (this.inviteLinkBox) this.inviteLinkBox.style.display = 'flex';
+
+                // WhatsApp Share link
+                if (this.shareWhatsappBtn) {
+                    const msg = encodeURIComponent(`Let's play Connect-4! Click this invite link to join my game: ${shareUrl}`);
+                    this.shareWhatsappBtn.href = `https://wa.me/?text=${msg}`;
+                }
+
+                // Show Online Room HUD
+                this.setupOnlineMatchView(data.roomId, playerName, 'Waiting for friend...');
+
+                // Copy to clipboard automatically as a convenience
+                navigator.clipboard.writeText(shareUrl).catch(() => {});
+
+                // Start polling room state
+                this.pollOnlineRoomState();
+            } else {
+                alert(data.error || 'Failed to create online room.');
+            }
+        } catch (e) {
+            console.error('Room creation error:', e);
+            alert('Could not connect to server. Ensure app.py backend is running.');
+        } finally {
+            if (this.createRoomBtn) {
+                this.createRoomBtn.disabled = false;
+                this.createRoomBtn.innerHTML = '<span>⚡ Create Game & Generate Invite Link</span>';
+            }
+        }
+    }
+
+    async submitJoinOnlineRoom() {
+        const nameInput = document.getElementById('guest-player-name');
+        const codeInput = document.getElementById('join-room-code-input');
+        const playerName = nameInput ? nameInput.value.trim() || 'Player 2' : 'Player 2';
+        let rawCode = codeInput ? codeInput.value.trim() : '';
+
+        // Extract code if user pasted full URL (e.g., http://localhost:5000/?room=TITAN-1234)
+        if (rawCode.includes('room=')) {
+            const match = rawCode.match(/room=([A-Z0-9-]+)/i);
+            if (match) rawCode = match[1];
+        }
+        const roomId = rawCode.toUpperCase();
+
+        if (!roomId) {
+            alert('Please enter a room code or paste an invite link.');
+            return;
+        }
+
+        if (this.submitJoinRoomBtn) {
+            this.submitJoinRoomBtn.disabled = true;
+            this.submitJoinRoomBtn.innerHTML = '<span>Joining room...</span>';
+        }
+
+        try {
+            const res = await fetch('/api/rooms/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId, playerName })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.status === 'success') {
+                this.onlineRoomId = roomId;
+                this.onlineToken = data.token;
+                this.onlinePlayerNum = 2;
+                this.isOnlineMatch = true;
+                this.onlineOpponentJoined = true;
+                this.currentMode = 'online';
+
+                this.closeInviteModal();
+                this.setupOnlineMatchView(roomId, data.state.player1_name || 'Player 1', '🟢 Friend Connected');
+                this.syncOnlineRoomState(data.state);
+                this.playSound('join');
+
+                // Start background sync
+                this.pollOnlineRoomState();
+            } else {
+                alert(data.error || 'Failed to join game room.');
+            }
+        } catch (e) {
+            console.error('Join room error:', e);
+            alert('Could not connect to server. Ensure app.py backend is running.');
+        } finally {
+            if (this.submitJoinRoomBtn) {
+                this.submitJoinRoomBtn.disabled = false;
+                this.submitJoinRoomBtn.innerHTML = '<span>🚀 Join Friend\'s Game</span>';
+            }
+        }
+    }
+
+    setupOnlineMatchView(roomId, opponentName, statusText) {
+        if (this.onlineMatchHud) this.onlineMatchHud.style.display = 'flex';
+        if (this.onlineRoomIdDisplay) this.onlineRoomIdDisplay.innerText = roomId;
+        if (this.onlineOpponentStatus) this.onlineOpponentStatus.innerText = statusText;
+
+        // Update player labels
+        const p1Title = document.querySelector('#player1-card .player-info h3');
+        const p2Title = document.querySelector('#player2-card .player-info h3');
+        if (p1Title) p1Title.innerText = this.onlinePlayerNum === 1 ? 'You (Red)' : `${opponentName} (Red)`;
+        if (p2Title) p2Title.innerText = this.onlinePlayerNum === 2 ? 'You (Cyan)' : `${opponentName} (Cyan)`;
+
+        // Reset board for match
+        this.resetGame();
+    }
+
+    copyInviteLink() {
+        const url = this.shareableLinkInput ? this.shareableLinkInput.value : `${window.location.origin}/?room=${this.onlineRoomId}`;
+        navigator.clipboard.writeText(url).then(() => {
+            if (this.copyInviteLinkBtn) {
+                const orig = this.copyInviteLinkBtn.innerHTML;
+                this.copyInviteLinkBtn.innerHTML = '<span>✓ Copied!</span>';
+                setTimeout(() => this.copyInviteLinkBtn.innerHTML = orig, 1800);
+            }
+            if (this.copyRoomLinkBtn) {
+                this.copyRoomLinkBtn.innerHTML = '<span>✓ Copied!</span>';
+                setTimeout(() => this.copyRoomLinkBtn.innerHTML = '<span>Copy Link</span>', 1800);
+            }
+        });
+    }
+
+    copyGameCodeOnly() {
+        if (!this.onlineRoomId) return;
+        navigator.clipboard.writeText(this.onlineRoomId).then(() => {
+            if (this.copyJustCodeBtn) {
+                const orig = this.copyJustCodeBtn.innerHTML;
+                this.copyJustCodeBtn.innerHTML = '<span>✓ Code Copied!</span>';
+                setTimeout(() => this.copyJustCodeBtn.innerHTML = orig, 1800);
+            }
+        });
+    }
+
+    leaveOnlineRoom() {
+        this.isOnlineMatch = false;
+        this.onlinePollingActive = false;
+        this.onlineRoomId = null;
+        this.onlineToken = null;
+        this.onlinePlayerNum = 0;
+
+        if (this.onlineMatchHud) this.onlineMatchHud.style.display = 'none';
+
+        // Revert player card titles
+        const p1Title = document.querySelector('#player1-card .player-info h3');
+        const p2Title = document.querySelector('#player2-card .player-info h3');
+        if (p1Title) p1Title.innerText = 'Player 1';
+        if (p2Title) p2Title.innerText = 'Player 2';
+
+        this.setMode('pve');
+    }
+
+    async pollOnlineRoomState() {
+        if (!this.isOnlineMatch || !this.onlineRoomId) return;
+        this.onlinePollingActive = true;
+
+        while (this.isOnlineMatch && this.onlinePollingActive) {
+            try {
+                const res = await fetch(`/api/rooms/${this.onlineRoomId}?token=${this.onlineToken}&version=${this.onlineVersion}`);
+                if (!res.ok) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+                const data = await res.json();
+                if (data.status === 'success' && data.state) {
+                    this.syncOnlineRoomState(data.state);
+                }
+            } catch (e) {
+                await new Promise(r => setTimeout(r, 1200));
+            }
+        }
+    }
+
+    syncOnlineRoomState(state) {
+        // Detect friend connecting
+        if (state.player2_joined && !this.onlineOpponentJoined) {
+            this.onlineOpponentJoined = true;
+            this.closeInviteModal();
+            this.playSound('join');
+            if (this.onlineOpponentStatus) this.onlineOpponentStatus.innerText = `🟢 ${state.player2_name || 'Friend'} Connected`;
+            const p2Title = document.querySelector('#player2-card .player-info h3');
+            if (p2Title && this.onlinePlayerNum === 1) p2Title.innerText = `${state.player2_name} (Cyan)`;
+        }
+
+        // Apply any new moves from opponent
+        if (state.moves && state.moves.length > this.moveHistory.length) {
+            const lastMove = state.moves[state.moves.length - 1];
+            if (this.board[lastMove.row][lastMove.col] === 0) {
+                this.board[lastMove.row][lastMove.col] = lastMove.player;
+                this.moveHistory.push({
+                    board: this.board.map(r => [...r]),
+                    player: lastMove.player,
+                    row: lastMove.row,
+                    col: lastMove.col
+                });
+                this.renderDiscDrop(lastMove.row, lastMove.col, lastMove.player);
+                this.playSound('drop');
+            }
+        }
+
+        this.currentPlayer = state.current_player;
+        this.onlineVersion = state.version;
+
+        // Check for incoming quick reactions
+        if (state.reactions && state.reactions.length > 0) {
+            state.reactions.forEach(r => {
+                if (!this.seenReactionIds.has(r.id)) {
+                    this.seenReactionIds.add(r.id);
+                    if (r.sender !== this.onlinePlayerNum) {
+                        this.spawnFloatingEmote(r.emote);
+                    }
+                }
+            });
+        }
+
+        // Check game over
+        if (state.winner && !this.isGameOver) {
+            this.handleGameOver(state.winner, state.winning_cells || []);
+        }
+
+        this.updateUI();
+    }
+
+    async sendOnlineMove(col) {
+        if (!isValidLocation(this.board, col)) {
+            this.playSound('error');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/rooms/${this.onlineRoomId}/move`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: this.onlineToken,
+                    col: col
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'success') {
+                this.syncOnlineRoomState(data.state);
+            } else {
+                this.playSound('error');
+            }
+        } catch (e) {
+            console.error('Online move error:', e);
+            this.playSound('error');
+        }
+    }
+
+    async sendReaction(emote) {
+        this.spawnFloatingEmote(emote);
+        this.playSound('reaction');
+
+        if (this.isOnlineMatch && this.onlineRoomId && this.onlineToken) {
+            try {
+                await fetch(`/api/rooms/${this.onlineRoomId}/react`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        token: this.onlineToken,
+                        emote: emote
+                    })
+                });
+            } catch (e) {}
+        }
+    }
+
+    spawnFloatingEmote(emote) {
+        if (!this.floatingEmotesContainer) return;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'floating-emote-bubble';
+        bubble.innerText = emote;
+
+        // Random horizontal start within board width
+        const leftPercent = Math.floor(Math.random() * 70) + 15;
+        bubble.style.left = `${leftPercent}%`;
+
+        this.floatingEmotesContainer.appendChild(bubble);
+
+        setTimeout(() => {
+            bubble.remove();
+        }, 2200);
+    }
+
+    async requestOnlineRematch() {
+        if (!this.isOnlineMatch || !this.onlineRoomId) return;
+
+        try {
+            const res = await fetch(`/api/rooms/${this.onlineRoomId}/rematch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: this.onlineToken })
+            });
+            const data = await res.json();
+            if (res.ok && data.status === 'success') {
+                this.syncOnlineRoomState(data.state);
+                this.resetGame();
+            }
+        } catch (e) {}
+    }
+
+    // =========================================================================
+    // BENCHMARK SUITE (PROBLEM 6 VERIFICATION)
+    // =========================================================================
     async runProblem6Benchmark(totalGames = 10) {
         if (this.runBenchmarkBtn) this.runBenchmarkBtn.disabled = true;
         this.benchmarkTableBody.innerHTML = '';
@@ -785,15 +1259,12 @@ class Connect4Game {
         let peakTimeMs = 0;
 
         for (let gameIdx = 1; gameIdx <= totalGames; gameIdx++) {
-            // Update progress bar
             const percent = Math.round((gameIdx / totalGames) * 100);
             if (this.benchmarkProgressFill) this.benchmarkProgressFill.style.width = `${percent}%`;
             if (this.benchmarkProgressText) this.benchmarkProgressText.innerText = `Running Game ${gameIdx} of ${totalGames}...`;
 
-            // Yield thread for UI update
             await new Promise(r => setTimeout(r, 40));
 
-            // Alternate who starts (odd games bot is P1, even games bot is P2)
             const botPlayerId = gameIdx % 2 !== 0 ? 1 : 2;
             const res = this.simulateSingleBenchmarkGame(botPlayerId, 4);
 
@@ -803,7 +1274,6 @@ class Connect4Game {
 
             if (res.maxMoveTime > peakTimeMs) peakTimeMs = res.maxMoveTime;
 
-            // Append row to table
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>#${gameIdx}</td>
@@ -815,7 +1285,6 @@ class Connect4Game {
             this.benchmarkTableBody.appendChild(row);
         }
 
-        // Final Benchmark Verification Summary
         if (this.runBenchmarkBtn) this.runBenchmarkBtn.disabled = false;
         if (this.benchmarkProgressText) this.benchmarkProgressText.innerText = `Benchmark Finished (${totalGames} Games Completed)`;
 
